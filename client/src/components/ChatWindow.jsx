@@ -331,8 +331,8 @@ export default function ChatWindow({
   if (!active) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] px-6 text-center">
-        <img src="/wolf-logo.png" alt="Boss Lucy" className="mb-5 h-28 w-28 rounded-2xl object-contain opacity-90 shadow-sm sm:h-36 sm:w-36" />
-        <h2 className="text-xl font-semibold text-slate-700">Boss Lucy</h2>
+        <img src="/wolf-logo.png" alt="Boss Lucy" className="mb-6 h-56 w-56 max-w-[70vw] rounded-3xl object-contain opacity-95 shadow-md sm:h-72 sm:w-72 lg:h-96 lg:w-96" />
+        <h2 className="text-2xl font-semibold text-slate-700">Boss Lucy</h2>
         <p className="mt-2 max-w-sm text-sm text-slate-500">Select a conversation from the inbox to start messaging.</p>
       </div>
     );
