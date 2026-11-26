@@ -830,13 +830,22 @@ router.post('/translate', requireAuth, async (req, res) => {
   const text = String((req.body && req.body.text) || '').trim().slice(0, 4000);
   if (!text) return res.status(400).json({ error: 'Text is required' });
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return res.status(502).json({ error: 'Translation failed' });
-    const data = await r.json();
-    const translated = Array.isArray(data?.[0]) ? data[0].map((p) => p?.[0] || '').join('') : '';
-    const detected = data?.[2] || 'auto';
-    res.json({ translated: translated || text, detected });
+    // Free MyMemory API (no key). Fallback to Google gtx if needed.
+    const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|en`;
+    const r = await fetch(mmUrl, { signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
+    if (r.ok) {
+      const data = await r.json();
+      const translated = data?.responseData?.translatedText;
+      if (translated && !/QUERY LENGTH LIMIT EXCEEDED|MYMEMORY WARNING/i.test(translated)) {
+        return res.json({ translated, detected: data?.responseData?.detectedLanguage || 'auto' });
+      }
+    }
+    const gUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+    const g = await fetch(gUrl, { signal: AbortSignal.timeout(10000) });
+    if (!g.ok) return res.status(502).json({ error: 'Translation failed' });
+    const gd = await g.json();
+    const translated = Array.isArray(gd?.[0]) ? gd[0].map((p) => p?.[0] || '').join('') : '';
+    res.json({ translated: translated || text, detected: gd?.[2] || 'auto' });
   } catch (e) {
     res.status(502).json({ error: e.message || 'Translation failed' });
   }
