@@ -281,6 +281,17 @@ export default function ChatWorkspace({ agentView = false }) {
     return () => clearInterval(t);
   }, [refresh]);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (activeIdRef.current) dismissChat();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // SSE realtime
   useEffect(() => {
     const source = new EventSource('/api/stream');

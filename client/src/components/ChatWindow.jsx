@@ -330,8 +330,10 @@ export default function ChatWindow({
 
   if (!active) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-[#e7ebf0]">
-        <div className="rounded-full bg-white/80 px-4 py-2 text-sm text-slate-500 shadow-sm">Select a conversation</div>
+      <div className="flex flex-1 flex-col items-center justify-center bg-[#f0f2f5] px-6 text-center">
+        <img src="/wolf-logo.png" alt="Boss Lucy" className="mb-5 h-28 w-28 rounded-2xl object-contain opacity-90 shadow-sm sm:h-36 sm:w-36" />
+        <h2 className="text-xl font-semibold text-slate-700">Boss Lucy</h2>
+        <p className="mt-2 max-w-sm text-sm text-slate-500">Select a conversation from the inbox to start messaging.</p>
       </div>
     );
   }
