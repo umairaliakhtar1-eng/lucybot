@@ -142,12 +142,12 @@ function StatusTicks({ m, mine }) {
   return <span className="text-[10px] opacity-80" title="Sent">✓</span>;
 }
 
-function DeletedBody({ m, isOwner }) {
+function DeletedBody({ m }) {
   return (
-    <div className={`rounded-md px-2 py-1 text-[13px] italic ${isOwner ? 'bg-red-50 text-red-700' : 'text-slate-500'}`}>
-      <p>This message was deleted{m.deleted_by_name ? ` by ${m.deleted_by_name}` : ''}.</p>
-      {isOwner && (m.deleted_body || m.deleted_media_url) && (
-        <div className="mt-1 not-italic text-slate-700">
+    <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[13px]">
+      <p className="font-medium italic text-red-700">This message was deleted{m.deleted_by_name ? ` by ${m.deleted_by_name}` : ''}.</p>
+      {(m.deleted_body || m.deleted_media_url) && (
+        <div className="mt-1 text-slate-700">
           {m.deleted_body ? <p className="whitespace-pre-wrap break-words">{m.deleted_body}</p> : null}
           {m.deleted_media_url ? <a href={m.deleted_media_url} target="_blank" rel="noreferrer" className="text-xs text-sky-600 underline">View deleted media</a> : null}
         </div>
@@ -188,7 +188,7 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onE
             } ${replying ? 'ring-2 ring-sky-400' : ''}`}
           >
             <QuoteBar quote={m.reply_to} mine={mine} />
-            {m.deleted_at ? <DeletedBody m={m} isOwner={isOwner} /> : <>
+            {m.deleted_at ? <DeletedBody m={m} /> : <>
               <Media m={m} className="mb-1 max-h-72 w-full max-w-sm object-contain" mine={mine} onOpenImage={onOpenImage} />
               {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
             </>}

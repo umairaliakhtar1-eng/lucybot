@@ -467,7 +467,11 @@ export default function ChatWorkspace({ agentView = false }) {
     if (!activeId) return;
     try {
       const { message } = await api.deleteMessage(activeId, messageId);
-      if (message) setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...message } : m)));
+      if (message?.deleted && user?.role !== 'owner') {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      } else if (message) {
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...message } : m)));
+      }
       refresh({ silent: true });
     } catch (e) {
       setError(e.message);
