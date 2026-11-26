@@ -333,7 +333,7 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
 router.delete('/conversations/:id', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  if (!isStaff(req.agent) || req.agent.role === 'owner') {
+  if (!['admin', 'agent'].includes(req.agent.role)) {
     return res.status(403).json({ error: 'Only admin/agent can delete chats' });
   }
   const updated = db.softDeleteConversation(conversation.id, { actorId: req.agent.id, actorName: req.agent.name });

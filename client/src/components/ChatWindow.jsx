@@ -535,7 +535,7 @@ export default function ChatWindow({
                 <option value="resolved">Resolved</option>
               </select>
             )}
-            {isStaff && !isOwner && !active.deleted_at && (
+            {!isOwner && !active.deleted_at && (
               <button onClick={() => { if (window.confirm('Delete this chat? It will be removed for staff but remain visible to owner.')) onDeleteConversation?.(); }} className="rounded-full p-2 text-slate-600 hover:bg-red-50 hover:text-red-600" title="Delete chat">🗑</button>
             )}
             <button onClick={onToggleNotes} className="rounded-full p-2 text-slate-600 hover:bg-slate-200 md:hidden" title="Notes">📝</button>
