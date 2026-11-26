@@ -164,7 +164,7 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onE
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Team note</p>
           {m.deleted_at ? <DeletedBody m={m} isOwner={isOwner} /> : <>
             <Media m={m} className="mb-1 max-h-64 max-w-full" onOpenImage={onOpenImage} />
-            {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+            {m.body ? <p id={`msg-body-${m.id}`} className="whitespace-pre-wrap break-words">{m.body}</p> : null}
           </>}
           <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-slate-400">
             {canDelete && !m.deleted_at && <button onClick={onDelete} title="Delete note" className="hover:text-red-500">Delete</button>}
@@ -190,7 +190,7 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onE
             <QuoteBar quote={m.reply_to} mine={mine} />
             {m.deleted_at ? <DeletedBody m={m} /> : <>
               <Media m={m} className="mb-1 max-h-72 w-full max-w-sm object-contain" mine={mine} onOpenImage={onOpenImage} />
-              {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+              {m.body ? <p id={`msg-body-${m.id}`} className="whitespace-pre-wrap break-words">{m.body}</p> : null}
             </>}
             <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${mine ? 'text-slate-500' : 'text-slate-400'}`}>
               {m.edited_at ? <span className="italic">edited</span> : null}
@@ -232,6 +232,8 @@ export default function ChatWindow({
   onAddNote,
   onDeleteNote,
   onDeleteMessage,
+  onPinMessage,
+  onUnpinMessage,
   onDeleteConversation,
   onChangeStatus,
   onDismiss,
@@ -541,6 +543,19 @@ export default function ChatWindow({
           </div>
         </div>
 
+        {active.pinned_message && (
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-white/90 px-3 py-2 text-sm sm:px-4">
+            <span className="text-amber-500">📌</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Pinned message</p>
+              <p className="truncate text-slate-700">
+                {active.pinned_message.deleted_at ? 'This message was deleted' : (active.pinned_message.body || (active.pinned_message.media_type ? `[${active.pinned_message.media_type}]` : 'Message'))}
+              </p>
+            </div>
+            <button onClick={onUnpinMessage} className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Unpin</button>
+          </div>
+        )}
+
         <div ref={msgListRef} className="flex-1 overflow-y-auto px-2 py-3 sm:px-4" style={{ backgroundColor: '#efeae2', backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.03) 1px, transparent 0)', backgroundSize: '24px 24px' }}>
           <div className="mx-auto flex max-w-5xl flex-col gap-1">
             {mergedMessages.length === 0 && (
@@ -690,7 +705,13 @@ export default function ChatWindow({
         <div className="fixed z-[80] min-w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           {!menu.message.deleted_at && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(null); setReplyingTo(menu.message); setMenu(null); textRef.current?.focus(); }}>Reply</button>}
           {((menu.message.body || menu.message.media_url) || (menu.message.deleted_at && isOwner && (menu.message.deleted_body || menu.message.deleted_media_url))) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { copyMessage(menu.message); setMenu(null); }}>Copy</button>}
+          {((menu.message.body) || (menu.message.deleted_at && isOwner && menu.message.deleted_body)) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { const id = `msg-body-${menu.message.id}`; const el = document.getElementById(id); if (el) { const r = document.createRange(); r.selectNodeContents(el); const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r); } setMenu(null); }}>Select</button>}
           {!menu.message.deleted_at && menu.message.body && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={async () => { const msg = menu.message; setMenu(null); const rect = { x: Math.min(menu.x, window.innerWidth - 340), y: Math.min(menu.y, window.innerHeight - 220) }; setTranslatePop({ x: rect.x, y: rect.y, text: msg.body, translated: '', loading: true, error: '' }); try { const res = await api.translate(msg.body); setTranslatePop((p) => p && p.text === msg.body ? { ...p, translated: res.translated, loading: false } : p); } catch (e) { setTranslatePop((p) => p && p.text === msg.body ? { ...p, loading: false, error: e.message || 'Translation failed' } : p); } }}>Translate to English</button>}
+          {!menu.message.deleted_at && menu.message.sender !== 'note' && (
+            <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { active?.pinned_message_id === menu.message.id ? onUnpinMessage?.() : onPinMessage?.(menu.message.id); setMenu(null); }}>
+              {active?.pinned_message_id === menu.message.id ? 'Unpin' : 'Pin'}
+            </button>
+          )}
           {!menu.message.deleted_at && menu.message.direction === 'outbound' && !menu.message.media_url && (isOwner || menu.message.agent_id === myId) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { startEdit(menu.message); setMenu(null); }}>Edit</button>}
           {!menu.message.deleted_at && canDeleteMessage(menu.message) && <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this message?')) onDeleteMessage?.(menu.message.id); setMenu(null); }}>Delete</button>}
         </div>

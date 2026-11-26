@@ -102,5 +102,7 @@ export const api = {
   deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
   setStatus: (id, status) => request(`/conversations/${id}/status`, { method: 'POST', body: { status } }),
   markRead: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
+  pinMessage: (id, messageId) => request(`/conversations/${id}/pin`, { method: 'POST', body: { message_id: messageId } }),
+  unpinMessage: (id) => request(`/conversations/${id}/pin`, { method: 'POST', body: { message_id: null } }),
   translate: (text) => request('/translate', { method: 'POST', body: { text } }),
 };

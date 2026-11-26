@@ -482,6 +482,26 @@ export default function ChatWorkspace({ agentView = false }) {
     }
   }
 
+  async function pinMessage(messageId) {
+    if (!activeId) return;
+    try {
+      const { conversation } = await api.pinMessage(activeId, messageId);
+      if (conversation) setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...conversation } : c)));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function unpinMessage() {
+    if (!activeId) return;
+    try {
+      const { conversation } = await api.unpinMessage(activeId);
+      if (conversation) setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...conversation } : c)));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function deleteConversation() {
     if (!activeId) return;
     try {
@@ -686,6 +706,8 @@ export default function ChatWorkspace({ agentView = false }) {
           onAddNote={addNote}
           onDeleteNote={deleteNote}
           onDeleteMessage={deleteMessage}
+          onPinMessage={pinMessage}
+          onUnpinMessage={unpinMessage}
           onDeleteConversation={deleteConversation}
           onChangeStatus={changeStatus}
           onDismiss={dismissChat}

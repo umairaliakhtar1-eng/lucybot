@@ -359,6 +359,22 @@ router.post('/conversations/:id/read', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/conversations/:id/pin', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const messageId = req.body?.message_id;
+  if (messageId) {
+    const msg = db.getMessage(Number(messageId));
+    if (!msg || msg.conversation_id !== conversation.id) {
+      return res.status(404).json({ error: 'Message not found in this conversation' });
+    }
+    if (msg.sender === 'note') return res.status(400).json({ error: 'Notes cannot be pinned' });
+  }
+  const updated = db.setPinnedMessage(conversation.id, messageId ? Number(messageId) : null);
+  broadcast('conversation', { conversation: updated });
+  res.json({ conversation: updated });
+});
+
 // ------------------------------------------------------------ connections
 // Facebook / Instagram / WhatsApp / Telegram ki API credentials UI se add hoti
 // hain. Tokens DB me encrypted rehte hain (server/services/crypto.js).

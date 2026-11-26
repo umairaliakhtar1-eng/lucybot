@@ -146,6 +146,9 @@ if (!msgCols.includes('deleted_media_type')) {
 if (!msgCols.includes('deleted_media_url')) {
   db.exec(`ALTER TABLE messages ADD COLUMN deleted_media_url TEXT`);
 }
+if (!convCols.includes('pinned_message_id')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN pinned_message_id INTEGER REFERENCES messages(id)`);
+}
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
 // Emoji/sticker messages ke sath Meta kabhi profile picture ka CDN URL
@@ -529,11 +532,33 @@ function findOrCreateConversation({ channel, externalId, contactName, photo, con
 }
 
 const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.status, c.note, c.photo,
-  c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending, c.blocked,
+  c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending, c.blocked, c.pinned_message_id,
+  pm.body AS pinned_message_body, pm.sender AS pinned_message_sender, pm.media_type AS pinned_message_media_type, pm.deleted_at AS pinned_message_deleted_at,
   cn.name AS connection_name,
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
   (SELECT CASE WHEN m.deleted_at IS NOT NULL THEN '[Message deleted]' ELSE substr(COALESCE(m.body,''), 1, 200) END
     FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
+
+function mapConversation(row) {
+  if (!row) return null;
+  const c = { ...row };
+  if (c.pinned_message_id) {
+    c.pinned_message = {
+      id: c.pinned_message_id,
+      body: c.pinned_message_deleted_at ? 'This message was deleted' : (c.pinned_message_body || ''),
+      sender: c.pinned_message_sender || 'customer',
+      media_type: c.pinned_message_deleted_at ? null : (c.pinned_message_media_type || null),
+      deleted_at: c.pinned_message_deleted_at || null,
+    };
+  } else {
+    c.pinned_message = null;
+  }
+  delete c.pinned_message_body;
+  delete c.pinned_message_sender;
+  delete c.pinned_message_media_type;
+  delete c.pinned_message_deleted_at;
+  return c;
+}
 
 function listConversations({ status, channel, unread, agent, limit = 200 } = {}) {
   const conditions = [];
@@ -569,10 +594,11 @@ function listConversations({ status, channel, unread, agent, limit = 200 } = {})
      FROM conversations c
      LEFT JOIN agents a ON a.id = c.assigned_agent_id
      LEFT JOIN connections cn ON cn.id = c.connection_id
+     LEFT JOIN messages pm ON pm.id = c.pinned_message_id
      ${where}
      ORDER BY c.last_message_at DESC
      LIMIT ?`
-  ).all(...params);
+  ).all(...params).map(mapConversation);
 }
 
 // Admin/owner ka agent-wise filter: kis agent ke paas kitni chats hain.
@@ -601,13 +627,14 @@ function unreadTotal() {
 }
 
 function getConversation(id) {
-  return db.prepare(
+  return mapConversation(db.prepare(
     `SELECT ${CONVERSATION_FIELDS}
      FROM conversations c
      LEFT JOIN agents a ON a.id = c.assigned_agent_id
      LEFT JOIN connections cn ON cn.id = c.connection_id
+     LEFT JOIN messages pm ON pm.id = c.pinned_message_id
      WHERE c.id = ?`
-  ).get(id);
+  ).get(id));
 }
 
 function setConversationStatus(id, status) {
@@ -806,6 +833,12 @@ function setConversationBlocked(id, blocked) {
   return getConversation(id);
 }
 
+function setPinnedMessage(conversationId, messageId) {
+  db.prepare('UPDATE conversations SET pinned_message_id = ? WHERE id = ?').run(messageId || null, conversationId);
+  touchSnapshot();
+  return getConversation(conversationId);
+}
+
 module.exports = {
   db,
   seedAdmin,
@@ -851,5 +884,7 @@ module.exports = {
   hasMessages,
   setConversationTimestamps,
   setConversationBlocked,
+  setPinnedMessage,
+  setPinnedMessage,
   now,
 };
