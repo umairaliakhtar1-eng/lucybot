@@ -148,7 +148,7 @@ function DeletedBody({ m }) {
       <p className="font-medium italic text-red-700">This message was deleted{m.deleted_by_name ? ` by ${m.deleted_by_name}` : ''}.</p>
       {(m.deleted_body || m.deleted_media_url) && (
         <div className="mt-1 text-slate-700">
-          {m.deleted_body ? <p className="whitespace-pre-wrap break-words">{m.deleted_body}</p> : null}
+          {m.deleted_body ? <p id={`msg-body-${m.id}`} className="whitespace-pre-wrap break-words">{m.deleted_body}</p> : null}
           {m.deleted_media_url ? <a href={m.deleted_media_url} target="_blank" rel="noreferrer" className="text-xs text-sky-600 underline">View deleted media</a> : null}
         </div>
       )}
