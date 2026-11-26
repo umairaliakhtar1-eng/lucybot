@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import SupportPopup from '../components/SupportPopup.jsx';
 
 const copy = {
   en: {
@@ -108,7 +109,6 @@ const copy = {
 export default function About() {
   const { user } = useAuth();
   const [lang, setLang] = useState('en');
-  const [supportOpen, setSupportOpen] = useState(false);
   const t = copy[lang];
   const dashboardPath = user ? (user.role === 'agent' ? '/my-chats' : '/inbox') : '/login';
 
@@ -207,38 +207,7 @@ export default function About() {
         </div>
       </section>
 
-      <button
-        onClick={() => setSupportOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#229ED9] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-300/40 transition hover:brightness-110"
-        aria-label="24/7 Support"
-        title={t.supportTitle}
-      >
-        <span className="text-lg">✈️</span>
-        <span className="hidden sm:inline">{t.supportTitle}</span>
-      </button>
-
-      {supportOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSupportOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-brand">{t.supportTitle}</p>
-                <h3 className="mt-1 text-xl font-bold text-slate-800">Telegram: @ZEUS9115</h3>
-              </div>
-              <button onClick={() => setSupportOpen(false)} className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-500 hover:bg-slate-100">✕</button>
-            </div>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600">{t.supportDesc}</p>
-            <a
-              href="https://t.me/ZEUS9115"
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110"
-            >
-              {t.supportBtn}
-            </a>
-          </div>
-        </div>
-      )}
+      <SupportPopup />
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row">

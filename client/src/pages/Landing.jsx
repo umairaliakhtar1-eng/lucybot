@@ -1,5 +1,6 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import SupportPopup from '../components/SupportPopup.jsx';
 
 const SERVICES = [
   { icon: "💬", title: "Facebook Automation / Facebook 自动化", desc: "Smart replies, orders, and support on Facebook Messenger — 24/7. / Facebook Messenger 智能回复、订单与客服，全天候运行。" },
@@ -184,6 +185,7 @@ export default function Landing() {
           </p>
         </div>
       </footer>
+      <SupportPopup />
     </div>
   );
 }

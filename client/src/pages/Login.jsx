@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import SupportPopup from '../components/SupportPopup.jsx';
 
 export default function Login() {
   const { login } = useAuth();
@@ -70,6 +71,7 @@ export default function Login() {
           </button>
         </form>
       </div>
+      <SupportPopup />
     </div>
   );
 }

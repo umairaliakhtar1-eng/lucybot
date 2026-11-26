@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../api';
+import SupportPopup from '../components/SupportPopup.jsx';
 
 // 3-dot (kebab) menu ke andar wala link. Active route highlight + unread badge.
 function MenuLink({ to, end, badge, onPick, children }) {
@@ -175,6 +176,7 @@ export default function Layout() {
       <main className="min-h-0 flex-1 overflow-hidden bg-cloud">
         <Outlet />
       </main>
+      <SupportPopup />
     </div>
   );
 }
