@@ -492,9 +492,7 @@ export default function ChatWindow({
   }
   function canDeleteNote(note) { return isStaff || note.agent_id === myId; }
   function canDeleteMessage(m) {
-    if (m.sender === 'note') return canDeleteNote(m);
-    if (isOwner) return true;
-    return isStaff && m.direction === 'outbound' && m.agent_id === myId;
+    return isOwner || isStaff;
   }
   function openMenu(e, m) {
     e.preventDefault();

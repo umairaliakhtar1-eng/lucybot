@@ -316,7 +316,7 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
   if (!message || message.conversation_id !== conversation.id) {
     return res.status(404).json({ error: 'Message not found in this conversation' });
   }
-  const canDelete = req.agent.role === 'owner' || (isStaff(req.agent) && (message.sender === 'note' || message.agent_id === req.agent.id));
+  const canDelete = isStaff(req.agent);
   if (!canDelete) return res.status(403).json({ error: 'Not allowed to delete this message' });
   const deleted = db.deleteMessage(message.id, { actorId: req.agent.id, actorName: req.agent.name });
   const updated = db.getConversation(conversation.id);
