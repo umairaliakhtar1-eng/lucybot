@@ -202,8 +202,10 @@ async function sendTelegram(creds, chatId, text, attachment) {
       const filePath = path.join(config.uploadDir, path.basename(attachment.url));
       const buffer = fs.readFileSync(filePath);
       form.append(media.field, new Blob([buffer]), path.basename(filePath));
+    } else if (attachment.url.startsWith('/')) {
+      return { ok: false, error: 'Telegram media URL must be public' };
     } else {
-      return { ok: false, error: 'Telegram media URL public nahi hai' };
+      form.append(media.field, attachment.url);
     }
 
     const res = await fetch(botUrl(creds.token, media.method), {

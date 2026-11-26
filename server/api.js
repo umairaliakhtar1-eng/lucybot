@@ -304,6 +304,32 @@ router.delete('/conversations/:id/notes/:messageId', requireAuth, (req, res) => 
   res.json({ ok: true });
 });
 
+router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const message = db.getMessage(Number(req.params.messageId));
+  if (!message || message.conversation_id !== conversation.id) {
+    return res.status(404).json({ error: 'Message not found in this conversation' });
+  }
+  const canDelete = req.agent.role === 'owner' || (isStaff(req.agent) && (message.sender === 'note' || message.agent_id === req.agent.id));
+  if (!canDelete) return res.status(403).json({ error: 'Not allowed to delete this message' });
+  db.deleteMessage(message.id);
+  const updated = db.getConversation(conversation.id);
+  broadcast('message-deleted', { conversation_id: conversation.id, message_id: message.id });
+  broadcast('conversation', { conversation: updated });
+  res.json({ ok: true });
+});
+
+router.delete('/conversations/:id', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const canDelete = req.agent.role === 'owner' || (isStaff(req.agent) && conversation.status === 'resolved');
+  if (!canDelete) return res.status(403).json({ error: 'Only owner or admin (resolved chat) can delete chat' });
+  db.deleteConversation(conversation.id);
+  broadcast('conversation-deleted', { conversation_id: conversation.id });
+  res.json({ ok: true });
+});
+
 router.post('/conversations/:id/status', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });

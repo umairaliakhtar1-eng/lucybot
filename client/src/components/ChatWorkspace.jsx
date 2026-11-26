@@ -317,6 +317,15 @@ export default function ChatWorkspace({ agentView = false }) {
       }
     };
 
+    const handleConversationDeleted = (payload) => {
+      setConversations((prev) => prev.filter((c) => c.id !== payload.conversation_id));
+      if (activeIdRef.current === payload.conversation_id) {
+        setActiveId(null);
+        setActive(null);
+        setMessages([]);
+      }
+    };
+
     const handleMessageEdited = (payload) => {
       if (activeIdRef.current !== payload.conversation_id) return;
       setMessages((prev) =>
@@ -328,6 +337,7 @@ export default function ChatWorkspace({ agentView = false }) {
     source.addEventListener('conversation', (event) => handleConversation(JSON.parse(event.data)));
     source.addEventListener('message-deleted', (event) => handleMessageDeleted(JSON.parse(event.data)));
     source.addEventListener('message-edited', (event) => handleMessageEdited(JSON.parse(event.data)));
+    source.addEventListener('conversation-deleted', (event) => handleConversationDeleted(JSON.parse(event.data)));
 
     return () => {
       source.close();
@@ -435,6 +445,28 @@ export default function ChatWorkspace({ agentView = false }) {
     try {
       await api.deleteNote(activeId, messageId);
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function deleteMessage(messageId) {
+    if (!activeId) return;
+    try {
+      await api.deleteMessage(activeId, messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      refresh({ silent: true });
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function deleteConversation() {
+    if (!activeId) return;
+    try {
+      await api.deleteConversation(activeId);
+      setConversations((prev) => prev.filter((c) => c.id !== activeId));
+      dismissChat();
     } catch (e) {
       setError(e.message);
     }
@@ -629,6 +661,8 @@ export default function ChatWorkspace({ agentView = false }) {
           onAssign={doAssign}
           onAddNote={addNote}
           onDeleteNote={deleteNote}
+          onDeleteMessage={deleteMessage}
+          onDeleteConversation={deleteConversation}
           onChangeStatus={changeStatus}
           onDismiss={dismissChat}
           onOpenInbox={() => {
@@ -643,6 +677,7 @@ export default function ChatWorkspace({ agentView = false }) {
           onError={setError}
           myId={user?.id}
           isStaff={isStaff}
+          isOwner={user?.role === 'owner'}
           showAgent={user?.role === 'owner'}
         />
       </div>

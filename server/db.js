@@ -663,6 +663,14 @@ function deleteNoteMessage(messageId) {
   return db.prepare(`DELETE FROM messages WHERE id = ? AND sender = 'note'`).run(messageId);
 }
 
+function deleteMessage(messageId) {
+  return db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
+}
+
+function deleteConversation(id) {
+  return db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+}
+
 function listMessages(conversationId) {
   const rows = db.prepare(
     `SELECT m.*, a.name AS agent_name,
@@ -772,6 +780,8 @@ module.exports = {
   addNoteMessage,
   getNoteMessage,
   deleteNoteMessage,
+  deleteMessage,
+  deleteConversation,
   listMessages,
   getMessage,
   markMessageEdited,

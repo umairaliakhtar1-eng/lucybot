@@ -142,11 +142,11 @@ function StatusTicks({ m, mine }) {
   return <span className="text-[10px] opacity-80" title="Sent">✓</span>;
 }
 
-function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, showAgent, onRetry, onOpenImage }) {
+function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onEdit, showAgent, onRetry, onOpenImage, onContextMenu }) {
   if (m.sender === 'note') {
     return (
       <div className="flex justify-center py-1">
-        <div className="max-w-[85%] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-slate-700 shadow-sm">
+        <div className="max-w-[85%] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-slate-700 shadow-sm" onContextMenu={onContextMenu}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Team note</p>
           <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" onOpenImage={onOpenImage} />
           {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
@@ -163,29 +163,26 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, show
   return (
     <div className={`group flex ${mine ? 'justify-end' : 'justify-start'} px-1`}>
       <div className={`flex max-w-[min(78%,42rem)] items-end gap-2 ${mine ? 'flex-row-reverse' : ''}`}>
-        {!mine ? <Avatar name={m.sender === 'customer' ? 'Customer' : 'Agent'} photo={null} className="h-7 w-7 text-[10px] self-end mb-1 hidden sm:flex" /> : null}
+        {!mine ? <Avatar name="Customer" photo={null} className="mb-1 hidden h-7 w-7 self-end text-[10px] sm:flex" /> : null}
         <div className="min-w-0">
           <div
+            onContextMenu={onContextMenu}
             className={`relative rounded-2xl px-3 py-2 text-[14px] leading-relaxed shadow-sm ${
-              mine ? 'bg-[#2b5278] text-white rounded-br-md' : 'bg-white text-slate-800 rounded-bl-md border border-slate-100'
+              mine ? 'bg-[#d9fdd3] text-slate-800 rounded-br-md' : 'bg-white text-slate-800 rounded-bl-md'
             } ${replying ? 'ring-2 ring-sky-400' : ''}`}
           >
             <QuoteBar quote={m.reply_to} mine={mine} />
             <Media m={m} className="mb-1 max-h-72 w-full max-w-sm rounded-lg object-cover" mine={mine} onOpenImage={onOpenImage} />
             {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
-            <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
+            <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${mine ? 'text-slate-500' : 'text-slate-400'}`}>
               {m.edited_at ? <span className="italic">edited</span> : null}
-              {mine && m.body && !m.media_url && !m.localStatus ? (
-                <button type="button" onClick={onEdit} title="Edit" className="opacity-0 transition group-hover:opacity-100 hover:underline">Edit</button>
-              ) : null}
+              {canEdit && !m.localStatus ? <button type="button" onClick={onEdit} title="Edit" className="opacity-0 transition hover:underline group-hover:opacity-100">Edit</button> : null}
               <span>{formatClock(m.created_at)}</span>
               <StatusTicks m={m} mine={mine} />
             </div>
           </div>
           <div className={`mt-0.5 flex items-center gap-2 px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
-            {m.localStatus === 'failed' && mine && (
-              <button type="button" onClick={onRetry} className="text-[11px] text-red-500 hover:underline">Retry</button>
-            )}
+            {m.localStatus === 'failed' && mine && <button type="button" onClick={onRetry} className="text-[11px] text-red-500 hover:underline">Retry</button>}
             <button type="button" onClick={onReply} className="text-[11px] text-slate-400 opacity-0 transition hover:text-brand group-hover:opacity-100">Reply</button>
             {showAgent && mine && m.agent_id ? <span className="text-[10px] text-slate-400">{m.agent_name || `Agent #${m.agent_id}`}</span> : null}
           </div>
@@ -216,6 +213,8 @@ export default function ChatWindow({
   onAssign,
   onAddNote,
   onDeleteNote,
+  onDeleteMessage,
+  onDeleteConversation,
   onChangeStatus,
   onDismiss,
   onOpenInbox,
@@ -226,6 +225,7 @@ export default function ChatWindow({
   onError,
   myId,
   isStaff,
+  isOwner,
   showAgent,
 }) {
   const [text, setText] = useState('');
@@ -244,6 +244,7 @@ export default function ChatWindow({
   const [editing, setEditing] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [optimistic, setOptimistic] = useState([]);
+  const [menu, setMenu] = useState(null);
   const fileRef = useRef(null);
   const textRef = useRef(null);
   const forwardFileRef = useRef(null);
@@ -266,7 +267,16 @@ export default function ChatWindow({
     setEditing(null);
     setLightbox(null);
     setOptimistic([]);
+    setMenu(null);
   }, [active?.id]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
+  }, [menu]);
 
   useEffect(() => () => {
     pendingRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
@@ -460,6 +470,20 @@ export default function ChatWindow({
     if (['pending', 'resolved', 'open'].includes(action)) onChangeStatus(action);
   }
   function canDeleteNote(note) { return isStaff || note.agent_id === myId; }
+  function canDeleteMessage(m) {
+    if (m.sender === 'note') return canDeleteNote(m);
+    if (isOwner) return true;
+    return isStaff && m.direction === 'outbound' && m.agent_id === myId;
+  }
+  function openMenu(e, m) {
+    e.preventDefault();
+    setMenu({ x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 220), message: m });
+  }
+  async function copyMessage(m) {
+    const text = m.body || m.media_url || '';
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); } catch {}
+  }
 
   const statusBadge = active.status === 'resolved' ? 'bg-green-100 text-green-700' : active.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700';
 
@@ -488,6 +512,9 @@ export default function ChatWindow({
                 <option value="resolved">Resolved</option>
               </select>
             )}
+            {(isOwner || (isStaff && active.status === 'resolved')) && (
+              <button onClick={() => { if (window.confirm('Delete this chat? This cannot be undone.')) onDeleteConversation?.(); }} className="rounded-full p-2 text-slate-600 hover:bg-red-50 hover:text-red-600" title="Delete chat">🗑</button>
+            )}
             <button onClick={onToggleNotes} className="rounded-full p-2 text-slate-600 hover:bg-slate-200 md:hidden" title="Notes">📝</button>
             {!isStaff && <button onClick={onDismiss} className="rounded-full p-2 text-slate-600 hover:bg-slate-200" title="Close">✕</button>}
           </div>
@@ -507,11 +534,15 @@ export default function ChatWindow({
                   <MessageBubble
                     m={m}
                     showAgent={showAgent}
+                    canDelete={canDeleteMessage(m)}
+                    canEdit={m.direction === 'outbound' && !m.media_url && (isOwner || m.agent_id === myId)}
                     onReply={() => { setEditing(null); setReplyingTo(m); textRef.current?.focus(); }}
                     onEdit={() => startEdit(m)}
+                    onDelete={() => onDeleteMessage?.(m.id)}
                     replying={replyingTo?.id === m.id}
                     onRetry={() => retryMessage(m)}
                     onOpenImage={setLightbox}
+                    onContextMenu={(e) => openMenu(e, m)}
                   />
                 </div>
               );
@@ -631,6 +662,14 @@ export default function ChatWindow({
               <DetailRow label="Created" value={formatFull(active.created_at)} />
             </dl>
           </div>
+        </div>
+      )}
+      {menu && (
+        <div className="fixed z-[80] min-w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+          <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(null); setReplyingTo(menu.message); setMenu(null); textRef.current?.focus(); }}>Reply</button>
+          {(menu.message.body || menu.message.media_url) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { copyMessage(menu.message); setMenu(null); }}>Copy</button>}
+          {menu.message.direction === 'outbound' && !menu.message.media_url && (isOwner || menu.message.agent_id === myId) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { startEdit(menu.message); setMenu(null); }}>Edit</button>}
+          {canDeleteMessage(menu.message) && <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this message?')) onDeleteMessage?.(menu.message.id); setMenu(null); }}>Delete</button>}
         </div>
       )}
       {lightbox && (

@@ -97,6 +97,8 @@ export const api = {
   }),
   addNote: (id, payload) => request(`/conversations/${id}/note`, { method: 'POST', body: payload }),
   deleteNote: (id, messageId) => request(`/conversations/${id}/notes/${messageId}`, { method: 'DELETE' }),
+  deleteMessage: (id, messageId) => request(`/conversations/${id}/messages/${messageId}`, { method: 'DELETE' }),
+  deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
   setStatus: (id, status) => request(`/conversations/${id}/status`, { method: 'POST', body: { status } }),
   markRead: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
 };
