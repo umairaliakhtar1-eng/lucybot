@@ -1,0 +1,142 @@
+// `.env` fallback tokens se DB connections auto-seed karta hai.
+//
+// Pehle app sirf .env tokens (PAGE_ACCESS_TOKEN, IG_ACCESS_TOKEN) se chalti
+// thi — ab DB-first hai. Purane setups ka data na khoye, is liye server start
+// par agar .env mein token/account hain aur us channel+account wali koi
+// connection DB mein maujood nahi, to wahan se ek connection bana diya jata
+// hai. User phir UI mein dekh/change/delete kar sakta hai.
+//
+// Idempotent: agar connection already hai (kisi kaam se bani ho) to duplicate
+// nahi banati.
+
+const config = require('../config');
+const db = require('../db');
+const { graphUrl } = require('./send');
+const { telegramApi } = require('./telegram');
+
+// Account ka naam/screen-name nikaalta hai (best-effort — fail ho to fallback).
+async function resolveAccountLabel(channel, accountId, token, fallback, apiHost) {
+  try {
+    const host = apiHost || (channel === 'instagram' ? 'instagram' : 'facebook');
+    const res = await fetch(
+      `${graphUrl(host, accountId)}?fields=name,username&access_token=${encodeURIComponent(token)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    return data.name || data.username || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Candidate sources (.env se sirf, DB connections wahan nahi ginte).
+function envCandidates() {
+  const out = [];
+  if (config.pageAccessToken && config.pageId) {
+    out.push({
+      channel: 'facebook',
+      accountId: config.pageId,
+      token: config.pageAccessToken,
+      appId: config.appId,
+      appSecret: config.appSecret,
+      apiHost: 'facebook',
+      fallbackName: 'Facebook Page (.env)',
+      extra: {},
+    });
+  }
+  if (config.igAccountId) {
+    // Instagram messaging via Facebook Login me Page access token hi chalta hai
+    // (Instagram Login wale IGAA... tokens alag hote hain). Is liye agar IG
+    // token EAA... hai to PAGE_ACCESS_TOKEN ko priority do - dono channels ek
+    // hi app/token se chalenge.
+    const igToken =
+      config.igAccessToken && config.igAccessToken.startsWith('IGAA')
+        ? config.igAccessToken
+        : config.pageAccessToken || config.igAccessToken;
+    if (igToken) {
+      out.push({
+        channel: 'instagram',
+        accountId: config.igAccountId,
+        token: igToken,
+        appId: config.appId,
+        appSecret: config.appSecret,
+        apiHost: igToken.startsWith('IGAA') ? 'instagram' : 'facebook',
+        fallbackName: 'Instagram Account (.env)',
+        extra: {},
+      });
+    }
+  }
+  if (config.waAccessToken && config.waPhoneNumberId) {
+    out.push({
+      channel: 'whatsapp',
+      accountId: config.waPhoneNumberId,
+      token: config.waAccessToken,
+      appId: config.appId,
+      appSecret: config.appSecret,
+      apiHost: 'facebook',
+      fallbackName: 'WhatsApp Business (.env)',
+      extra: { wa_own_number: config.waOwnNumber },
+    });
+  }
+  if (config.telegramBotToken) {
+    out.push({
+      channel: 'telegram',
+      accountId: config.telegramAccountId,
+      token: config.telegramBotToken,
+      apiHost: 'telegram',
+      fallbackName: 'Telegram Bot (.env)',
+      extra: {},
+    });
+  }
+  return out;
+}
+
+// Banai gayi connections ki list return karta hai (pehle se maujood = nahi).
+async function seedFromEnv() {
+  const created = [];
+  for (const cand of envCandidates()) {
+    if (!cand.token) continue;
+
+    let accountId = cand.accountId;
+    let name = cand.fallbackName;
+
+    if (cand.channel === 'telegram') {
+      // Bot id/name token se milte hain. Isi id se duplicate detection hoti
+      // hai, is liye API fail ho to connection skip karte hain.
+      const me = await telegramApi(cand.token, 'getMe', {});
+      if (!me.ok || !me.data) {
+        console.warn(`[bootstrap] Telegram getMe fail: ${me.error || 'unknown'}`);
+        continue;
+      }
+      accountId = accountId || String(me.data.id);
+      name =
+        [me.data.first_name, me.data.last_name].filter(Boolean).join(' ') ||
+        me.data.username ||
+        name;
+    } else {
+      if (!accountId) continue;
+      name = await resolveAccountLabel(cand.channel, accountId, cand.token, cand.fallbackName, cand.apiHost);
+    }
+
+    // Same channel+account wali connection pehle se ho to chhoro.
+    const existing = db.db
+      .prepare('SELECT id FROM connections WHERE channel = ? AND account_id = ? LIMIT 1')
+      .get(cand.channel, String(accountId));
+    if (existing) continue;
+
+    const conn = db.createConnection({
+      channel: cand.channel,
+      name,
+      accountId,
+      token: cand.token,
+      appId: cand.appId,
+      appSecret: cand.appSecret,
+      apiHost: cand.apiHost,
+      extra: cand.extra,
+    });
+    console.log(`[bootstrap] .env se connection banai: [${cand.channel}] ${name} (id ${conn.id})`);
+    created.push(conn);
+  }
+  return created;
+}
+
+module.exports = { seedFromEnv };
