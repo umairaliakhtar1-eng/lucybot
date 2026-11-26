@@ -299,15 +299,19 @@ export default function ChatWorkspace({ agentView = false }) {
       const { conversation_id, message } = payload || {};
       if (!conversation_id || !message) return;
       if (activeIdRef.current === conversation_id) {
-        setMessages((prev) => prev.map((m) => {
-          if (m.id !== message.id) return m;
-          const next = { ...m, ...message };
-          // Preserve owner-only deleted content if SSE sent redacted payload.
-          if (m.deleted_body && !next.deleted_body) next.deleted_body = m.deleted_body;
-          if (m.deleted_media_url && !next.deleted_media_url) next.deleted_media_url = m.deleted_media_url;
-          if (m.deleted_media_type && !next.deleted_media_type) next.deleted_media_type = m.deleted_media_type;
-          return next;
-        }));
+        setMessages((prev) => {
+          if (message.deleted_at && user?.role !== 'owner') {
+            return prev.filter((m) => m.id !== message.id);
+          }
+          return prev.map((m) => {
+            if (m.id !== message.id) return m;
+            const next = { ...m, ...message };
+            if (m.deleted_body && !next.deleted_body) next.deleted_body = m.deleted_body;
+            if (m.deleted_media_url && !next.deleted_media_url) next.deleted_media_url = m.deleted_media_url;
+            if (m.deleted_media_type && !next.deleted_media_type) next.deleted_media_type = m.deleted_media_type;
+            return next;
+          });
+        });
       }
     };
 

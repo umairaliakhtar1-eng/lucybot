@@ -321,12 +321,9 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
   const deleted = db.deleteMessage(message.id, { actorId: req.agent.id, actorName: req.agent.name });
   const updated = db.getConversation(conversation.id);
   // Broadcast redacted message for everyone; owner client gets full detail from response.
-  // Hide deleted message from everyone except owner.
-  if (req.agent.role === 'owner') {
-    broadcast('message-updated', { conversation_id: conversation.id, message: deleted });
-  } else {
-    broadcast('message-deleted', { conversation_id: conversation.id, message_id: message.id });
-  }
+  // Soft-delete: broadcast redacted update; clients hide for non-owners.
+  const redacted = (() => { const { deleted_body, deleted_media_type, deleted_media_url, ...rest } = deleted; return rest; })();
+  broadcast('message-updated', { conversation_id: conversation.id, message: redacted });
   broadcast('conversation', { conversation: updated });
   res.json({ ok: true, message: req.agent.role === 'owner' ? deleted : { id: message.id, deleted: true } });
 });
