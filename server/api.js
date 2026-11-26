@@ -156,15 +156,19 @@ router.post('/conversations/:id/reply', requireAuth, async (req, res) => {
   const result = await dispatchSend(conversation, conversation.external_id, body, attachment);
 
   if (!result.ok) {
-    return res.status(502).json({ error: result.error || 'Failed to send message' });
+    if (result.blocked) db.setConversationBlocked(conversation.id, true);
+    const full = db.getConversation(conversation.id);
+    if (result.blocked) broadcast('conversation', { conversation: full });
+    return res.status(502).json({ error: result.error || 'Failed to send message', blocked: !!result.blocked, conversation: full });
   }
 
+  if (conversation.blocked) db.setConversationBlocked(conversation.id, false);
   const record = db.addMessage({
     conversationId: conversation.id,
     direction: 'outbound',
     body,
     type: mediaType || 'text',
-    metaId: (result.data && result.data.message_id) || null,
+    metaId: (result.data && result.data.message_id) || (result.data && result.data.message_id) || null,
     agentId: req.agent.id,
     mediaType: mediaType || null,
     mediaUrl: mediaUrl || null,
@@ -176,7 +180,7 @@ router.post('/conversations/:id/reply', requireAuth, async (req, res) => {
 
   const full = db.getConversation(conversation.id);
   broadcast('message', { conversation: full, message: record });
-  res.json({ ok: true, message: record });
+  res.json({ ok: true, message: record, conversation: full });
 });
 
 // Sent message "edit": Meta already-sent message ko badal nahi sakta, is liye
@@ -313,11 +317,13 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
   }
   const canDelete = req.agent.role === 'owner' || (isStaff(req.agent) && (message.sender === 'note' || message.agent_id === req.agent.id));
   if (!canDelete) return res.status(403).json({ error: 'Not allowed to delete this message' });
-  db.deleteMessage(message.id);
+  const deleted = db.deleteMessage(message.id, { actorId: req.agent.id, actorName: req.agent.name });
   const updated = db.getConversation(conversation.id);
-  broadcast('message-deleted', { conversation_id: conversation.id, message_id: message.id });
+  // Broadcast redacted message for everyone; owner client gets full detail from response.
+  const redacted = (() => { const { deleted_body, deleted_media_type, deleted_media_url, ...rest } = deleted; return rest; })();
+  broadcast('message-updated', { conversation_id: conversation.id, message: redacted });
   broadcast('conversation', { conversation: updated });
-  res.json({ ok: true });
+  res.json({ ok: true, message: req.agent.role === 'owner' ? deleted : redacted });
 });
 
 router.delete('/conversations/:id', requireAuth, (req, res) => {

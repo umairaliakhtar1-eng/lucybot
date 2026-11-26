@@ -125,6 +125,27 @@ if (!convCols.includes('connection_id')) {
 if (!convCols.includes('assign_pending')) {
   db.exec(`ALTER TABLE conversations ADD COLUMN assign_pending INTEGER NOT NULL DEFAULT 0`);
 }
+if (!convCols.includes('blocked')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0`);
+}
+if (!msgCols.includes('deleted_at')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_at INTEGER`);
+}
+if (!msgCols.includes('deleted_by')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_by INTEGER`);
+}
+if (!msgCols.includes('deleted_by_name')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_by_name TEXT`);
+}
+if (!msgCols.includes('deleted_body')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_body TEXT`);
+}
+if (!msgCols.includes('deleted_media_type')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_media_type TEXT`);
+}
+if (!msgCols.includes('deleted_media_url')) {
+  db.exec(`ALTER TABLE messages ADD COLUMN deleted_media_url TEXT`);
+}
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
 // Emoji/sticker messages ke sath Meta kabhi profile picture ka CDN URL
@@ -471,24 +492,30 @@ function listAllAppSecrets() {
 // ------------------------------------------------------- conversations
 function findOrCreateConversation({ channel, externalId, contactName, photo, connectionId }) {
   const existing = db.prepare(
-    'SELECT * FROM conversations WHERE channel = ? AND external_id = ?'
-  ).get(channel, externalId);
+    'SELECT * FROM conversations WHERE channel = ? AND external_id = ? AND connection_id IS ?'
+  ).get(channel, externalId, connectionId || null);
 
   if (existing) {
     if (contactName && contactName !== existing.contact_name) {
-      db.prepare('UPDATE conversations SET contact_name = ? WHERE id = ?')
-        .run(contactName, existing.id);
+      db.prepare('UPDATE conversations SET contact_name = ? WHERE id = ?').run(contactName, existing.id);
     }
     if (photo && photo !== existing.photo) {
-      db.prepare('UPDATE conversations SET photo = ? WHERE id = ?')
-        .run(photo, existing.id);
-    }
-    // Purani conversations (jo .env se bani) ab UI-added connection se attach ho jati hain
-    if (connectionId && !existing.connection_id) {
-      db.prepare('UPDATE conversations SET connection_id = ? WHERE id = ?')
-        .run(connectionId, existing.id);
+      db.prepare('UPDATE conversations SET photo = ? WHERE id = ?').run(photo, existing.id);
     }
     return db.prepare('SELECT * FROM conversations WHERE id = ?').get(existing.id);
+  }
+
+  // Legacy fallback: same channel+external_id without connection_id.
+  if (connectionId) {
+    const legacy = db.prepare(
+      'SELECT * FROM conversations WHERE channel = ? AND external_id = ? AND connection_id IS NULL'
+    ).get(channel, externalId);
+    if (legacy) {
+      db.prepare('UPDATE conversations SET connection_id = ? WHERE id = ?').run(connectionId, legacy.id);
+      if (contactName && contactName !== legacy.contact_name) db.prepare('UPDATE conversations SET contact_name = ? WHERE id = ?').run(contactName, legacy.id);
+      if (photo && photo !== legacy.photo) db.prepare('UPDATE conversations SET photo = ? WHERE id = ?').run(photo, legacy.id);
+      return db.prepare('SELECT * FROM conversations WHERE id = ?').get(legacy.id);
+    }
   }
 
   const t = now();
@@ -497,15 +524,16 @@ function findOrCreateConversation({ channel, externalId, contactName, photo, con
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(channel, externalId, contactName || 'Unknown', photo || null, connectionId || null, t, t);
 
-  return db.prepare('SELECT * FROM conversations WHERE channel = ? AND external_id = ?')
-    .get(channel, externalId);
+  return db.prepare('SELECT * FROM conversations WHERE channel = ? AND external_id = ? AND connection_id IS ?')
+    .get(channel, externalId, connectionId || null);
 }
 
 const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.status, c.note, c.photo,
-  c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending,
+  c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending, c.blocked,
   cn.name AS connection_name,
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
-  (SELECT substr(body, 1, 200) FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
+  (SELECT CASE WHEN m.deleted_at IS NOT NULL THEN '[Message deleted]' ELSE substr(COALESCE(m.body,''), 1, 200) END
+    FROM messages m WHERE m.conversation_id = c.id AND m.sender != 'note' ORDER BY m.id DESC LIMIT 1) AS last_message`;
 
 function listConversations({ status, channel, unread, agent, limit = 200 } = {}) {
   const conditions = [];
@@ -628,19 +656,11 @@ function addMessage({ conversationId, direction, body, type = 'text', metaId = n
     `INSERT INTO messages (conversation_id, direction, body, type, meta_id, agent_id, media_type, media_url, sender, reply_to_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(conversationId, direction, body, type, metaId, agentId, mediaType, mediaUrl, sender || (direction === 'outbound' ? 'agent' : 'customer'), replyToId, t);
-
   if (touchConversation) {
     db.prepare('UPDATE conversations SET last_message_at = ? WHERE id = ?').run(t, conversationId);
   }
   touchSnapshot();
-  const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(Number(r.lastInsertRowid));
-  if (row.reply_to_id) {
-    const quoted = db.prepare('SELECT id, body, sender, media_type, media_url FROM messages WHERE id = ?').get(row.reply_to_id);
-    row.reply_to = quoted
-      ? { id: quoted.id, sender: quoted.sender, body: quoted.body || '', media_type: quoted.media_type || null, media_url: quoted.media_url || null }
-      : { id: row.reply_to_id, sender: null, body: '', media_type: null, media_url: null };
-  }
-  return row;
+  return getMessage(Number(r.lastInsertRowid));
 }
 
 // Private note: lives inside the conversation's message thread but is never
@@ -663,52 +683,88 @@ function deleteNoteMessage(messageId) {
   return db.prepare(`DELETE FROM messages WHERE id = ? AND sender = 'note'`).run(messageId);
 }
 
-function deleteMessage(messageId) {
-  return db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
+function deleteMessage(messageId, { actorId = null, actorName = null } = {}) {
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
+  if (!msg) return null;
+  const t = now();
+  db.prepare(
+    `UPDATE messages SET deleted_at = ?, deleted_by = ?, deleted_by_name = ?, deleted_body = body, deleted_media_type = media_type, deleted_media_url = media_url,
+      body = '', media_type = NULL, media_url = NULL, type = 'deleted'
+     WHERE id = ?`
+  ).run(t, actorId, actorName, messageId);
+  // Update conversation last_message_at to latest non-deleted non-note if needed
+  const latest = db.prepare(
+    `SELECT created_at FROM messages WHERE conversation_id = ? AND sender != 'note' AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`
+  ).get(msg.conversation_id);
+  db.prepare('UPDATE conversations SET last_message_at = ? WHERE id = ?').run(latest?.created_at || 0, msg.conversation_id);
+  touchSnapshot();
+  return getMessage(messageId);
 }
 
 function deleteConversation(id) {
   return db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
 }
 
+function mapMessage(row) {
+  if (!row) return null;
+  const message = { ...row };
+  if (!message.deleted_by_name && message.deleted_by_name_joined) message.deleted_by_name = message.deleted_by_name_joined;
+  delete message.deleted_by_name_joined;
+  delete message.r_id;
+  delete message.r_body;
+  delete message.r_sender;
+  delete message.r_media_type;
+  delete message.r_media_url;
+  delete message.r_deleted_at;
+  if (row.reply_to_id) {
+    if (row.r_id) {
+      message.reply_to = {
+        id: row.r_id,
+        sender: row.r_sender,
+        body: row.r_deleted_at ? 'This message was deleted' : (row.r_body || ''),
+        media_type: row.r_deleted_at ? null : (row.r_media_type || null),
+        media_url: row.r_deleted_at ? null : (row.r_media_url || null),
+      };
+    } else {
+      message.reply_to = { id: row.reply_to_id, sender: null, body: '', media_type: null, media_url: null };
+    }
+  }
+  if (message.deleted_at) {
+    message.body = 'This message was deleted';
+    message.media_type = null;
+    message.media_url = null;
+    message.type = 'deleted';
+  }
+  return message;
+}
+
 function listMessages(conversationId) {
   const rows = db.prepare(
-    `SELECT m.*, a.name AS agent_name,
+    `SELECT m.*, a.name AS agent_name, da.name AS deleted_by_name_joined,
             r.id AS r_id, r.body AS r_body, r.sender AS r_sender,
-            r.media_type AS r_media_type, r.media_url AS r_media_url
+            r.media_type AS r_media_type, r.media_url AS r_media_url, r.deleted_at AS r_deleted_at
      FROM messages m
      LEFT JOIN agents a ON a.id = m.agent_id
+     LEFT JOIN agents da ON da.id = m.deleted_by
      LEFT JOIN messages r ON r.id = m.reply_to_id
      WHERE m.conversation_id = ?
      ORDER BY m.id ASC`
   ).all(conversationId);
-
-  return rows.map((row) => {
-    const message = { ...row };
-    delete message.r_id;
-    delete message.r_body;
-    delete message.r_sender;
-    delete message.r_media_type;
-    delete message.r_media_url;
-    if (row.reply_to_id) {
-      if (row.r_id) {
-        message.reply_to = {
-          id: row.r_id,
-          sender: row.r_sender,
-          body: row.r_body || '',
-          media_type: row.r_media_type || null,
-          media_url: row.r_media_url || null,
-        };
-      } else {
-        message.reply_to = { id: row.reply_to_id, sender: null, body: '', media_type: null, media_url: null };
-      }
-    }
-    return message;
-  });
+  return rows.map(mapMessage);
 }
 
 function getMessage(id) {
-  return db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
+  const row = db.prepare(
+    `SELECT m.*, a.name AS agent_name, da.name AS deleted_by_name_joined,
+            r.id AS r_id, r.body AS r_body, r.sender AS r_sender,
+            r.media_type AS r_media_type, r.media_url AS r_media_url, r.deleted_at AS r_deleted_at
+     FROM messages m
+     LEFT JOIN agents a ON a.id = m.agent_id
+     LEFT JOIN agents da ON da.id = m.deleted_by
+     LEFT JOIN messages r ON r.id = m.reply_to_id
+     WHERE m.id = ?`
+  ).get(id);
+  return mapMessage(row);
 }
 
 // Purane message ko "edited" mark karo. Naya (corrected) message alag row hota
@@ -742,6 +798,12 @@ function setConversationTimestamps(id, { lastMessageAt, createdAt } = {}) {
     db.prepare('UPDATE conversations SET created_at = ? WHERE id = ? AND created_at = 0')
       .run(createdAt, id);
   }
+}
+
+function setConversationBlocked(id, blocked) {
+  db.prepare('UPDATE conversations SET blocked = ? WHERE id = ?').run(blocked ? 1 : 0, id);
+  touchSnapshot();
+  return getConversation(id);
 }
 
 module.exports = {
@@ -788,5 +850,6 @@ module.exports = {
   findMessageByMetaId,
   hasMessages,
   setConversationTimestamps,
+  setConversationBlocked,
   now,
 };

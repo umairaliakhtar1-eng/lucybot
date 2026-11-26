@@ -98,13 +98,18 @@ async function graphPost(host, path, accessToken, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) {
-    return { ok: false, error: (data.error && data.error.message) || `HTTP ${res.status}` };
+    const err = data.error || {};
+    const code = err.code;
+    const sub = err.error_subcode;
+    const blocked = code === 10 || code === 200 || code === 551 || sub === 2018109 || /blocked|not available|recipient/i.test(err.message || '');
+    return { ok: false, error: err.message || `HTTP ${res.status}`, blocked };
   }
   return { ok: true, data };
 }
 
 function buildAttachmentMessage(attachment) {
   if (!attachment || !attachment.url) return null;
+  if (attachment.url.startsWith('/')) return { __local: true };
   const typeMap = { audio: 'audio', video: 'video', image: 'image', document: 'file' };
   const type = typeMap[attachment.type] || 'file';
   return { attachment: { type, payload: { url: attachment.url } } };
@@ -115,9 +120,11 @@ function buildAttachmentMessage(attachment) {
 async function sendMetaMessage(creds, recipientId, text, attachment) {
   if (!creds.token) return { ok: false, error: 'No access token configured for this channel' };
   const host = creds.apiHost === 'instagram' ? 'instagram' : 'facebook';
+  const msg = buildAttachmentMessage(attachment);
+  if (msg?.__local) return { ok: false, error: 'Media URL must be public. Configure R2/storage for uploads.' };
   return graphPost(host, 'me/messages', creds.token, {
     recipient: { id: recipientId },
-    message: buildAttachmentMessage(attachment) || { text },
+    message: msg || { text },
   });
 }
 
@@ -148,6 +155,7 @@ async function sendWhatsApp(creds, to, text, attachment) {
   }
   if (!creds.token) return { ok: false, error: 'No WhatsApp access token configured' };
 
+  if (attachment?.url?.startsWith('/')) return { ok: false, error: 'Media URL must be public. Configure R2/storage for uploads.' };
   const payload = attachment
     ? {
         messaging_product: 'whatsapp',
@@ -215,7 +223,9 @@ async function sendTelegram(creds, chatId, text, attachment) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
-      return { ok: false, error: data.description || `HTTP ${res.status}` };
+      const desc = data.description || `HTTP ${res.status}`;
+      const blocked = /blocked|forbidden|can't be messaged|chat not found|bot was blocked/i.test(desc);
+      return { ok: false, error: desc, blocked };
     }
     return { ok: true, data: data.result };
   } catch (err) {

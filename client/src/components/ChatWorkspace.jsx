@@ -295,6 +295,22 @@ export default function ChatWorkspace({ agentView = false }) {
       }
     };
 
+    const handleMessageUpdated = (payload) => {
+      const { conversation_id, message } = payload || {};
+      if (!conversation_id || !message) return;
+      if (activeIdRef.current === conversation_id) {
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== message.id) return m;
+          const next = { ...m, ...message };
+          // Preserve owner-only deleted content if SSE sent redacted payload.
+          if (m.deleted_body && !next.deleted_body) next.deleted_body = m.deleted_body;
+          if (m.deleted_media_url && !next.deleted_media_url) next.deleted_media_url = m.deleted_media_url;
+          if (m.deleted_media_type && !next.deleted_media_type) next.deleted_media_type = m.deleted_media_type;
+          return next;
+        }));
+      }
+    };
+
     const handleConversation = (payload) => {
       if (!payload.conversation) return;
       setConversations((prev) => upsert(prev, payload.conversation));
@@ -336,6 +352,7 @@ export default function ChatWorkspace({ agentView = false }) {
     source.addEventListener('message', (event) => handleMessage(JSON.parse(event.data)));
     source.addEventListener('conversation', (event) => handleConversation(JSON.parse(event.data)));
     source.addEventListener('message-deleted', (event) => handleMessageDeleted(JSON.parse(event.data)));
+    source.addEventListener('message-updated', (event) => handleMessageUpdated(JSON.parse(event.data)));
     source.addEventListener('message-edited', (event) => handleMessageEdited(JSON.parse(event.data)));
     source.addEventListener('conversation-deleted', (event) => handleConversationDeleted(JSON.parse(event.data)));
 
@@ -348,17 +365,15 @@ export default function ChatWorkspace({ agentView = false }) {
   async function send(text, replyToId = null) {
     if (!activeId || !text.trim()) return;
     try {
-      const { message } = await api.reply(activeId, { body: text.trim(), ...(replyToId ? { reply_to_id: replyToId } : {}) });
+      const { message, conversation } = await api.reply(activeId, { body: text.trim(), ...(replyToId ? { reply_to_id: replyToId } : {}) });
       setMessages((prev) => mergeMessages(prev, [message]));
-      setConversations((prev) =>
-        upsert(prev, {
-          ...prev.find((c) => c.id === activeId),
-          last_message: message.body,
-          last_message_at: message.created_at,
-        })
-      );
+      if (conversation) setConversations((prev) => upsert(prev, conversation));
       return message;
     } catch (e) {
+      if (e.data?.conversation) {
+        setConversations((prev) => upsert(prev, e.data.conversation));
+        if (activeIdRef.current === e.data.conversation.id) setActive((p) => p ? { ...p, ...e.data.conversation } : p);
+      }
       setError(e.message);
       throw e;
     }
@@ -367,17 +382,15 @@ export default function ChatWorkspace({ agentView = false }) {
   async function sendMedia(payload) {
     if (!activeId) return;
     try {
-      const { message } = await api.reply(activeId, payload);
+      const { message, conversation } = await api.reply(activeId, payload);
       setMessages((prev) => mergeMessages(prev, [message]));
-      setConversations((prev) =>
-        upsert(prev, {
-          ...prev.find((c) => c.id === activeId),
-          last_message: message.media_type ? `[${message.media_type}]` : message.body,
-          last_message_at: message.created_at,
-        })
-      );
+      if (conversation) setConversations((prev) => upsert(prev, conversation));
       return message;
     } catch (e) {
+      if (e.data?.conversation) {
+        setConversations((prev) => upsert(prev, e.data.conversation));
+        if (activeIdRef.current === e.data.conversation.id) setActive((p) => p ? { ...p, ...e.data.conversation } : p);
+      }
       setError(e.message);
       throw e;
     }
@@ -453,8 +466,8 @@ export default function ChatWorkspace({ agentView = false }) {
   async function deleteMessage(messageId) {
     if (!activeId) return;
     try {
-      await api.deleteMessage(activeId, messageId);
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      const { message } = await api.deleteMessage(activeId, messageId);
+      if (message) setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...message } : m)));
       refresh({ silent: true });
     } catch (e) {
       setError(e.message);
@@ -615,11 +628,14 @@ export default function ChatWorkspace({ agentView = false }) {
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <span className="truncate text-sm text-slate-500">{c.last_message || (c.status === 'resolved' ? 'Resolved' : 'No messages yet')}</span>
-                      {(c.unread || 0) > 0 ? (
-                        <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#3390ec] px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? '99+' : c.unread}</span>
-                      ) : (
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] capitalize ${c.status === 'resolved' ? 'bg-green-100 text-green-700' : c.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{c.status}</span>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {c.blocked ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span> : null}
+                        {(c.unread || 0) > 0 ? (
+                          <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#3390ec] px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? '99+' : c.unread}</span>
+                        ) : (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] capitalize ${c.status === 'resolved' ? 'bg-green-100 text-green-700' : c.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{c.status}</span>
+                        )}
+                      </div>
                     </div>
                     {!agentView && (
                       <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400">

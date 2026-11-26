@@ -16,8 +16,8 @@ function MediaImage({ src, className, onOpen }) {
   const [loaded, setLoaded] = useState(false);
   if (failed) return <BrokenImage type="image" />;
   return (
-    <button type="button" onClick={() => onOpen?.(src)} className="relative block w-full overflow-hidden rounded-lg bg-slate-100 text-left">
-      {!loaded && <div className="absolute inset-0 animate-pulse bg-slate-200" />}
+    <button type="button" onClick={() => onOpen?.(src)} className="relative block max-w-full overflow-hidden bg-transparent text-left">
+      {!loaded && <div className="absolute inset-0 animate-pulse bg-slate-200/60" />}
       <img
         src={src}
         alt="attachment"
@@ -34,7 +34,7 @@ function MediaImage({ src, className, onOpen }) {
 function MediaVideo({ src, className }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <BrokenImage type="video" />;
-  return <video src={src} controls preload="metadata" onError={() => setFailed(true)} className={className} />;
+  return <video src={src} controls preload="metadata" onError={() => setFailed(true)} className={`${className} bg-transparent`} />;
 }
 
 function isProfilePicUrl(url) {
@@ -142,16 +142,32 @@ function StatusTicks({ m, mine }) {
   return <span className="text-[10px] opacity-80" title="Sent">✓</span>;
 }
 
-function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onEdit, showAgent, onRetry, onOpenImage, onContextMenu }) {
+function DeletedBody({ m, isOwner }) {
+  return (
+    <div className={`rounded-md px-2 py-1 text-[13px] italic ${isOwner ? 'bg-red-50 text-red-700' : 'text-slate-500'}`}>
+      <p>This message was deleted{m.deleted_by_name ? ` by ${m.deleted_by_name}` : ''}.</p>
+      {isOwner && (m.deleted_body || m.deleted_media_url) && (
+        <div className="mt-1 not-italic text-slate-700">
+          {m.deleted_body ? <p className="whitespace-pre-wrap break-words">{m.deleted_body}</p> : null}
+          {m.deleted_media_url ? <a href={m.deleted_media_url} target="_blank" rel="noreferrer" className="text-xs text-sky-600 underline">View deleted media</a> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onEdit, showAgent, onRetry, onOpenImage, onContextMenu, isOwner }) {
   if (m.sender === 'note') {
     return (
       <div className="flex justify-center py-1">
         <div className="max-w-[85%] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-slate-700 shadow-sm" onContextMenu={onContextMenu}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Team note</p>
-          <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" onOpenImage={onOpenImage} />
-          {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+          {m.deleted_at ? <DeletedBody m={m} isOwner={isOwner} /> : <>
+            <Media m={m} className="mb-1 max-h-64 max-w-full" onOpenImage={onOpenImage} />
+            {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+          </>}
           <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-slate-400">
-            {canDelete && <button onClick={onDelete} title="Delete note" className="hover:text-red-500">Delete</button>}
+            {canDelete && !m.deleted_at && <button onClick={onDelete} title="Delete note" className="hover:text-red-500">Delete</button>}
             <span>{formatClock(m.created_at)}</span>
           </div>
         </div>
@@ -172,18 +188,20 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, canEdit, onE
             } ${replying ? 'ring-2 ring-sky-400' : ''}`}
           >
             <QuoteBar quote={m.reply_to} mine={mine} />
-            <Media m={m} className="mb-1 max-h-72 w-full max-w-sm rounded-lg object-cover" mine={mine} onOpenImage={onOpenImage} />
-            {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+            {m.deleted_at ? <DeletedBody m={m} isOwner={isOwner} /> : <>
+              <Media m={m} className="mb-1 max-h-72 w-full max-w-sm object-contain" mine={mine} onOpenImage={onOpenImage} />
+              {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+            </>}
             <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${mine ? 'text-slate-500' : 'text-slate-400'}`}>
               {m.edited_at ? <span className="italic">edited</span> : null}
-              {canEdit && !m.localStatus ? <button type="button" onClick={onEdit} title="Edit" className="opacity-0 transition hover:underline group-hover:opacity-100">Edit</button> : null}
+              {canEdit && !m.localStatus && !m.deleted_at ? <button type="button" onClick={onEdit} title="Edit" className="opacity-0 transition hover:underline group-hover:opacity-100">Edit</button> : null}
               <span>{formatClock(m.created_at)}</span>
               <StatusTicks m={m} mine={mine} />
             </div>
           </div>
           <div className={`mt-0.5 flex items-center gap-2 px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
             {m.localStatus === 'failed' && mine && <button type="button" onClick={onRetry} className="text-[11px] text-red-500 hover:underline">Retry</button>}
-            <button type="button" onClick={onReply} className="text-[11px] text-slate-400 opacity-0 transition hover:text-brand group-hover:opacity-100">Reply</button>
+            {!m.deleted_at && <button type="button" onClick={onReply} className="text-[11px] text-slate-400 opacity-0 transition hover:text-brand group-hover:opacity-100">Reply</button>}
             {showAgent && mine && m.agent_id ? <span className="text-[10px] text-slate-400">{m.agent_name || `Agent #${m.agent_id}`}</span> : null}
           </div>
         </div>
@@ -477,10 +495,11 @@ export default function ChatWindow({
   }
   function openMenu(e, m) {
     e.preventDefault();
+    if (m.deleted_at && !isOwner) return;
     setMenu({ x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 220), message: m });
   }
   async function copyMessage(m) {
-    const text = m.body || m.media_url || '';
+    const text = m.deleted_at ? (isOwner ? (m.deleted_body || m.deleted_media_url || '') : '') : (m.body || m.media_url || '');
     if (!text) return;
     try { await navigator.clipboard.writeText(text); } catch {}
   }
@@ -499,6 +518,7 @@ export default function ChatWindow({
               <p className="truncate text-xs text-slate-500">
                 <span style={{ color: channel.color }}>{channel.label}</span>
                 {active.assigned_agent_name ? ` · ${active.assigned_agent_name}` : ''}
+                {active.blocked ? <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span> : null}
               </p>
             </div>
           </button>
@@ -543,6 +563,7 @@ export default function ChatWindow({
                     onRetry={() => retryMessage(m)}
                     onOpenImage={setLightbox}
                     onContextMenu={(e) => openMenu(e, m)}
+                    isOwner={isOwner}
                   />
                 </div>
               );
@@ -666,10 +687,10 @@ export default function ChatWindow({
       )}
       {menu && (
         <div className="fixed z-[80] min-w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(null); setReplyingTo(menu.message); setMenu(null); textRef.current?.focus(); }}>Reply</button>
-          {(menu.message.body || menu.message.media_url) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { copyMessage(menu.message); setMenu(null); }}>Copy</button>}
-          {menu.message.direction === 'outbound' && !menu.message.media_url && (isOwner || menu.message.agent_id === myId) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { startEdit(menu.message); setMenu(null); }}>Edit</button>}
-          {canDeleteMessage(menu.message) && <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this message?')) onDeleteMessage?.(menu.message.id); setMenu(null); }}>Delete</button>}
+          {!menu.message.deleted_at && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(null); setReplyingTo(menu.message); setMenu(null); textRef.current?.focus(); }}>Reply</button>}
+          {((menu.message.body || menu.message.media_url) || (menu.message.deleted_at && isOwner && (menu.message.deleted_body || menu.message.deleted_media_url))) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { copyMessage(menu.message); setMenu(null); }}>Copy</button>}
+          {!menu.message.deleted_at && menu.message.direction === 'outbound' && !menu.message.media_url && (isOwner || menu.message.agent_id === myId) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { startEdit(menu.message); setMenu(null); }}>Edit</button>}
+          {!menu.message.deleted_at && canDeleteMessage(menu.message) && <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this message?')) onDeleteMessage?.(menu.message.id); setMenu(null); }}>Delete</button>}
         </div>
       )}
       {lightbox && (
