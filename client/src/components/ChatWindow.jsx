@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { channelOf, formatClock, formatFull } from '../channels';
-import { uploadFile } from '../api';
+import { api, uploadFile } from '../api';
 import Avatar from './Avatar.jsx';
 
 function BrokenImage({ type = 'image' }) {
