@@ -623,7 +623,7 @@ export default function ChatWindow({
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                 rows={1}
                 placeholder={editing ? 'Edit message...' : 'Message'}
-                className="max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl border-0 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none ring-1 ring-slate-200 focus:ring-sky-300"
+                className="max-h-48 min-h-[44px] flex-1 resize-y rounded-2xl border-0 bg-white px-4 py-2.5 text-sm leading-5 text-slate-800 shadow-sm outline-none ring-1 ring-slate-200 focus:ring-sky-300"
               />
               <button type="submit" disabled={sending || (!text.trim() && !pending.length)} className="mb-0.5 rounded-full bg-[#3390ec] p-2.5 text-white hover:bg-[#2b7ed0] disabled:opacity-40" aria-label="Send" title="Send">
                 <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
