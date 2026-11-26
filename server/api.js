@@ -107,6 +107,7 @@ router.get('/conversations', requireAuth, (req, res) => {
     unread: req.query.unread === '1' || req.query.unread === 'true',
     agent: req.query.agent || 'all',
     limit: req.query.limit,
+    includeDeleted: req.agent.role === 'owner',
   });
   res.json({ conversations });
 });
@@ -126,6 +127,7 @@ router.get('/conversations/:id', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
   const isOwner = req.agent.role === 'owner';
+  if (conversation.deleted_at && !isOwner) return res.status(404).json({ error: 'Conversation not found' });
   const messages = db.listMessages(conversation.id).filter((m) => isOwner || !m.deleted_at);
   res.json({ conversation, messages });
 });
@@ -331,11 +333,44 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
 router.delete('/conversations/:id', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  const canDelete = req.agent.role === 'owner' || (isStaff(req.agent) && conversation.status === 'resolved');
-  if (!canDelete) return res.status(403).json({ error: 'Only owner or admin (resolved chat) can delete chat' });
-  db.deleteConversation(conversation.id);
+  const isStaffUser = isStaff(req.agent);
+  if (!isStaffUser) return res.status(403).json({ error: 'Not allowed to delete this chat' });
+  if (req.agent.role === 'owner') {
+    db.deleteConversation(conversation.id);
+    broadcast('conversation-deleted', { conversation_id: conversation.id, hard: true });
+    return res.json({ ok: true });
+  }
+  const updated = db.softDeleteConversation(conversation.id, { actorId: req.agent.id, actorName: req.agent.name });
+  // Hide from non-owners, but let owner see deletion audit.
   broadcast('conversation-deleted', { conversation_id: conversation.id });
+  broadcast('conversation', { conversation: updated, owner_only: true });
   res.json({ ok: true });
+});
+
+router.post('/conversations/:id/archive', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const archived = !!req.body?.archived;
+  const updated = db.setConversationArchived(conversation.id, archived);
+  broadcast('conversation', { conversation: updated });
+  res.json({ conversation: updated });
+});
+
+router.post('/conversations/:id/pin-chat', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const pinned = !!req.body?.pinned;
+  const updated = db.setConversationPinned(conversation.id, pinned);
+  broadcast('conversation', { conversation: updated });
+  res.json({ conversation: updated });
+});
+
+router.post('/conversations/:id/unread', requireAuth, (req, res) => {
+  const conversation = db.getConversation(req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+  const updated = db.setConversationUnread(conversation.id, 1);
+  broadcast('conversation', { conversation: updated });
+  res.json({ conversation: updated });
 });
 
 router.post('/conversations/:id/status', requireAuth, (req, res) => {

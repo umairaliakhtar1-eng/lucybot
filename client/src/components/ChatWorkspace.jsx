@@ -64,6 +64,7 @@ export default function ChatWorkspace({ agentView = false }) {
     typeof window === 'undefined' ? false : window.matchMedia('(max-width: 767px)').matches
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [chatMenu, setChatMenu] = useState(null);
   const [listWidth, setListWidth] = useState(() => {
     try {
       const saved = localStorage.getItem(LIST_WIDTH_KEY);
@@ -316,17 +317,26 @@ export default function ChatWorkspace({ agentView = false }) {
     };
 
     const handleConversation = (payload) => {
-      if (!payload.conversation) return;
-      setConversations((prev) => upsert(prev, payload.conversation));
-      if (activeIdRef.current === payload.conversation.id) {
-        setActive(payload.conversation);
-        if (agentView && payload.conversation.assigned_agent_id !== user?.id) {
+      const conversation = payload?.conversation;
+      if (!conversation) return;
+      if (payload?.owner_only && user?.role !== 'owner') return;
+      if (conversation.deleted_at && user?.role !== 'owner') {
+        setConversations((prev) => prev.filter((c) => c.id !== conversation.id));
+        if (activeIdRef.current === conversation.id) { setActiveId(null); setActive(null); setMessages([]); }
+        return;
+      }
+      setConversations((prev) => {
+        if (!matchesTab(conversation) && user?.role !== 'owner') return prev.filter((c) => c.id !== conversation.id);
+        return upsert(prev, conversation);
+      });
+      if (activeIdRef.current === conversation.id) {
+        setActive(conversation);
+        if (agentView && conversation.assigned_agent_id !== user?.id) {
           setActiveId(null);
           setActive(null);
           setMessages([]);
-        } else if (agentView && payload.conversation.assign_pending) {
-          // Chat pehle se khuli hai — assignment dekhi ja chuki hai, red clear.
-          api.markRead(payload.conversation.id).catch(() => {});
+        } else if (agentView && conversation.assign_pending) {
+          api.markRead(conversation.id).catch(() => {});
         }
       }
     };
@@ -338,8 +348,14 @@ export default function ChatWorkspace({ agentView = false }) {
     };
 
     const handleConversationDeleted = (payload) => {
-      setConversations((prev) => prev.filter((c) => c.id !== payload.conversation_id));
-      if (activeIdRef.current === payload.conversation_id) {
+      if (payload?.hard) {
+        setConversations((prev) => prev.filter((c) => c.id !== payload.conversation_id));
+      } else if (user?.role === 'owner') {
+        setConversations((prev) => prev.map((c) => c.id === payload.conversation_id ? { ...c, deleted_at: c.deleted_at || Date.now() } : c));
+      } else {
+        setConversations((prev) => prev.filter((c) => c.id !== payload.conversation_id));
+      }
+      if (activeIdRef.current === payload.conversation_id && user?.role !== 'owner') {
         setActiveId(null);
         setActive(null);
         setMessages([]);
@@ -502,15 +518,44 @@ export default function ChatWorkspace({ agentView = false }) {
     }
   }
 
-  async function deleteConversation() {
-    if (!activeId) return;
+  async function deleteConversation(conversationId = activeId) {
+    if (!conversationId) return;
     try {
-      await api.deleteConversation(activeId);
-      setConversations((prev) => prev.filter((c) => c.id !== activeId));
-      dismissChat();
+      await api.deleteConversation(conversationId);
+      if (user?.role === 'owner') {
+        // Owner hard-deletes; remove locally. Soft-deleted-by-staff will come back via refresh/conversation event.
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      } else {
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      }
+      if (activeIdRef.current === conversationId && user?.role !== 'owner') dismissChat();
+      if (activeIdRef.current === conversationId && user?.role === 'owner') dismissChat();
+      refresh({ silent: true });
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  async function archiveConversation(conversationId, archived = true) {
+    try {
+      const { conversation } = await api.archiveConversation(conversationId, archived);
+      if (conversation) setConversations((prev) => upsert(prev, conversation));
+    } catch (e) { setError(e.message); }
+  }
+
+  async function pinConversation(conversationId, pinned = true) {
+    try {
+      const { conversation } = await api.pinConversation(conversationId, pinned);
+      if (conversation) setConversations((prev) => upsert(prev, conversation));
+    } catch (e) { setError(e.message); }
+  }
+
+  async function markUnread(conversationId) {
+    try {
+      const { conversation } = await api.markUnread(conversationId);
+      if (conversation) setConversations((prev) => upsert(prev, conversation));
+      if (activeIdRef.current === conversationId) dismissChat();
+    } catch (e) { setError(e.message); }
   }
 
   function dismissChat() {
@@ -522,18 +567,25 @@ export default function ChatWorkspace({ agentView = false }) {
   }
 
   const sorted = useMemo(
-    () => [...conversations].sort((a, b) => (b.last_message_at || 0) - (a.last_message_at || 0)),
+    () => [...conversations].sort((a, b) => {
+      const ap = a.pinned_at ? 1 : 0;
+      const bp = b.pinned_at ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      if (ap && bp && a.pinned_at !== b.pinned_at) return (b.pinned_at || 0) - (a.pinned_at || 0);
+      return (b.last_message_at || 0) - (a.last_message_at || 0);
+    }),
     [conversations]
   );
 
   const q = search.trim().toLowerCase();
   const visible = useMemo(() => {
-    if (!q) return sorted;
-    return sorted.filter((c) => {
+    let list = sorted.filter((c) => user?.role === 'owner' || !c.deleted_at);
+    if (!q) return list;
+    return list.filter((c) => {
       const name = String(c.contact_name || c.external_id || '').toLowerCase();
       return name.includes(q);
     });
-  }, [sorted, q]);
+  }, [sorted, q, user?.role]);
 
   // Mobile: jab chat khula hai to list popup drawer banti hai (Inbox icon se
   // khulti hai), warna poori screen. Desktop par hamesha side-by-side.
@@ -640,23 +692,34 @@ export default function ChatWorkspace({ agentView = false }) {
               <button
                 key={c.id}
                 onClick={() => select(c.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setChatMenu({ x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 220), chat: c });
+                }}
                 className={`block w-full px-3 py-2.5 text-left transition ${
-                  activeId === c.id ? 'bg-[#3390ec]/10' : agentView && c.assign_pending ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'
+                  activeId === c.id ? 'bg-[#3390ec]/10' : c.deleted_at ? 'bg-red-50/60 hover:bg-red-50' : agentView && c.assign_pending ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <Avatar name={c.contact_name} photo={c.photo} className="h-12 w-12 text-base" />
                   <div className="min-w-0 flex-1 border-b border-slate-100 py-0.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[15px] font-medium text-slate-800">{c.contact_name}</span>
+                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[15px] font-medium text-slate-800">
+                        {c.pinned_at ? <span title="Pinned chat" className="text-[11px] text-amber-500">📌</span> : null}
+                        <span className="truncate">{c.contact_name}</span>
+                      </span>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {agentView && c.assign_pending > 0 && <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">new</span>}
                         <span className="text-[11px] text-slate-400">{formatTime(c.last_message_at)}</span>
                       </div>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className="truncate text-sm text-slate-500">{c.last_message || (c.status === 'resolved' ? 'Resolved' : 'No messages yet')}</span>
+                      <span className="truncate text-sm text-slate-500">
+                        {c.deleted_at && user?.role === 'owner' ? `Deleted by ${c.deleted_by_name || 'staff'} · ${c.last_message || ''}` : (c.last_message || (c.status === 'resolved' ? 'Resolved' : 'No messages yet'))}
+                      </span>
                       <div className="flex shrink-0 items-center gap-1">
+                        {c.archived ? <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Archived</span> : null}
+                        {c.deleted_at && user?.role === 'owner' ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700" title={c.deleted_by_name ? `Deleted by ${c.deleted_by_name}` : 'Deleted'}>Deleted</span> : null}
                         {c.blocked ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span> : null}
                         {(c.unread || 0) > 0 ? (
                           <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#3390ec] px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? '99+' : c.unread}</span>
@@ -683,6 +746,30 @@ export default function ChatWorkspace({ agentView = false }) {
           )}
         </div>
       </div>
+
+      {chatMenu && (
+        <div className="fixed z-[90] min-w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-xl" style={{ left: chatMenu.x, top: chatMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { archiveConversation(chatMenu.chat.id, !chatMenu.chat.archived); setChatMenu(null); }}>
+            {chatMenu.chat.archived ? 'Unarchive' : 'Archive'}
+          </button>
+          <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { pinConversation(chatMenu.chat.id, !chatMenu.chat.pinned_at); setChatMenu(null); }}>
+            {chatMenu.chat.pinned_at ? 'Unpin' : 'Pin'}
+          </button>
+          <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { markUnread(chatMenu.chat.id); setChatMenu(null); }}>
+            Mark as unread
+          </button>
+          {(!chatMenu.chat.deleted_at || user?.role === 'owner') && user?.role !== 'owner' && (
+            <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this chat?')) deleteConversation(chatMenu.chat.id); setChatMenu(null); }}>
+              Delete chat
+            </button>
+          )}
+          {user?.role === 'owner' && !chatMenu.chat.deleted_at && (
+            <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Permanently delete this chat?')) deleteConversation(chatMenu.chat.id); setChatMenu(null); }}>
+              Delete chat
+            </button>
+          )}
+        </div>
+      )}
 
       {/* resize handle */}
       <div

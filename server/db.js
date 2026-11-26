@@ -149,6 +149,21 @@ if (!msgCols.includes('deleted_media_url')) {
 if (!convCols.includes('pinned_message_id')) {
   db.exec(`ALTER TABLE conversations ADD COLUMN pinned_message_id INTEGER REFERENCES messages(id)`);
 }
+if (!convCols.includes('archived')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
+}
+if (!convCols.includes('pinned_at')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN pinned_at INTEGER`);
+}
+if (!convCols.includes('deleted_at')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN deleted_at INTEGER`);
+}
+if (!convCols.includes('deleted_by')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN deleted_by INTEGER`);
+}
+if (!convCols.includes('deleted_by_name')) {
+  db.exec(`ALTER TABLE conversations ADD COLUMN deleted_by_name TEXT`);
+}
 db.prepare(`UPDATE agents SET role = 'admin' WHERE email = ? AND role != 'owner'`).run(config.adminEmail);
 
 // Emoji/sticker messages ke sath Meta kabhi profile picture ka CDN URL
@@ -533,6 +548,7 @@ function findOrCreateConversation({ channel, externalId, contactName, photo, con
 
 const CONVERSATION_FIELDS = `c.id, c.channel, c.external_id, c.contact_name, c.status, c.note, c.photo,
   c.unread, c.last_message_at, c.created_at, c.connection_id, c.assign_pending, c.blocked, c.pinned_message_id,
+  c.archived, c.pinned_at, c.deleted_at, c.deleted_by, c.deleted_by_name,
   pm.body AS pinned_message_body, pm.sender AS pinned_message_sender, pm.media_type AS pinned_message_media_type, pm.deleted_at AS pinned_message_deleted_at,
   cn.name AS connection_name,
   a.id AS assigned_agent_id, a.name AS assigned_agent_name,
@@ -560,9 +576,10 @@ function mapConversation(row) {
   return c;
 }
 
-function listConversations({ status, channel, unread, agent, limit = 200 } = {}) {
+function listConversations({ status, channel, unread, agent, limit = 200, includeDeleted = false } = {}) {
   const conditions = [];
   const params = [];
+  if (!includeDeleted) conditions.push('c.deleted_at IS NULL');
   if (status && status !== 'all') {
     conditions.push('c.status = ?');
     params.push(status);
@@ -596,7 +613,7 @@ function listConversations({ status, channel, unread, agent, limit = 200 } = {})
      LEFT JOIN connections cn ON cn.id = c.connection_id
      LEFT JOIN messages pm ON pm.id = c.pinned_message_id
      ${where}
-     ORDER BY c.last_message_at DESC
+     ORDER BY (CASE WHEN c.pinned_at IS NOT NULL THEN 0 ELSE 1 END), COALESCE(c.pinned_at, 0) DESC, c.last_message_at DESC
      LIMIT ?`
   ).all(...params).map(mapConversation);
 }
@@ -730,6 +747,32 @@ function deleteMessage(messageId, { actorId = null, actorName = null } = {}) {
 
 function deleteConversation(id) {
   return db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+}
+
+function softDeleteConversation(id, { actorId = null, actorName = null } = {}) {
+  const t = now();
+  db.prepare('UPDATE conversations SET deleted_at = ?, deleted_by = ?, deleted_by_name = ? WHERE id = ?')
+    .run(t, actorId, actorName, id);
+  touchSnapshot();
+  return getConversation(id);
+}
+
+function setConversationArchived(id, archived) {
+  db.prepare('UPDATE conversations SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
+  touchSnapshot();
+  return getConversation(id);
+}
+
+function setConversationPinned(id, pinned) {
+  db.prepare('UPDATE conversations SET pinned_at = ? WHERE id = ?').run(pinned ? now() : null, id);
+  touchSnapshot();
+  return getConversation(id);
+}
+
+function setConversationUnread(id, unread) {
+  db.prepare('UPDATE conversations SET unread = ? WHERE id = ?').run(unread > 0 ? Number(unread) : 1, id);
+  touchSnapshot();
+  return getConversation(id);
 }
 
 function mapMessage(row) {
@@ -877,6 +920,10 @@ module.exports = {
   deleteNoteMessage,
   deleteMessage,
   deleteConversation,
+  softDeleteConversation,
+  setConversationArchived,
+  setConversationPinned,
+  setConversationUnread,
   listMessages,
   getMessage,
   markMessageEdited,
@@ -884,7 +931,6 @@ module.exports = {
   hasMessages,
   setConversationTimestamps,
   setConversationBlocked,
-  setPinnedMessage,
   setPinnedMessage,
   now,
 };
