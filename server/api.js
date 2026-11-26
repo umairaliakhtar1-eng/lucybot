@@ -333,12 +333,8 @@ router.delete('/conversations/:id/messages/:messageId', requireAuth, (req, res) 
 router.delete('/conversations/:id', requireAuth, (req, res) => {
   const conversation = db.getConversation(req.params.id);
   if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-  const isStaffUser = isStaff(req.agent);
-  if (!isStaffUser) return res.status(403).json({ error: 'Not allowed to delete this chat' });
-  if (req.agent.role === 'owner') {
-    db.deleteConversation(conversation.id);
-    broadcast('conversation-deleted', { conversation_id: conversation.id, hard: true });
-    return res.json({ ok: true });
+  if (!isStaff(req.agent) || req.agent.role === 'owner') {
+    return res.status(403).json({ error: 'Only admin/agent can delete chats' });
   }
   const updated = db.softDeleteConversation(conversation.id, { actorId: req.agent.id, actorName: req.agent.name });
   // Hide from non-owners, but let owner see deletion audit.

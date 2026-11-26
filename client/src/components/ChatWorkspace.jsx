@@ -758,13 +758,8 @@ export default function ChatWorkspace({ agentView = false }) {
           <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { markUnread(chatMenu.chat.id); setChatMenu(null); }}>
             Mark as unread
           </button>
-          {(!chatMenu.chat.deleted_at || user?.role === 'owner') && user?.role !== 'owner' && (
+          {!chatMenu.chat.deleted_at && user?.role !== 'owner' && (
             <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this chat?')) deleteConversation(chatMenu.chat.id); setChatMenu(null); }}>
-              Delete chat
-            </button>
-          )}
-          {user?.role === 'owner' && !chatMenu.chat.deleted_at && (
-            <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Permanently delete this chat?')) deleteConversation(chatMenu.chat.id); setChatMenu(null); }}>
               Delete chat
             </button>
           )}
