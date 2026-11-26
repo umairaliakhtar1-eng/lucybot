@@ -245,7 +245,8 @@ function seedOwner() {
 }
 
 function findAgentByEmail(email) {
-  return db.prepare('SELECT * FROM agents WHERE email = ?').get(email);
+  const normalized = String(email || '').toLowerCase().trim();
+  return db.prepare('SELECT * FROM agents WHERE LOWER(email) = ?').get(normalized);
 }
 
 function findAgentById(id) {
