@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Login() {
@@ -27,6 +27,9 @@ export default function Login() {
   return (
     <div className="flex min-h-full items-center justify-center bg-cloud p-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-300/60">
+        <div className="mb-3 flex justify-end">
+          <Link to="/about" className="text-xs font-medium text-slate-500 hover:text-brand">About</Link>
+        </div>
         <img
           src="/wolf-logo.png"
           alt="Boss Lucy"

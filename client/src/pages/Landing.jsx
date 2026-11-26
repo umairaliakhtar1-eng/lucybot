@@ -31,12 +31,15 @@ export default function Landing() {
               Boss Lucy
             </span>
           </Link>
-          <Link
-            to="/login"
-            className="rounded-lg bg-gradient-to-br from-brand to-lemon px-4 py-2 text-sm font-semibold text-white shadow-md shadow-lemon/30 transition hover:brightness-110"
-          >
-            Login
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/about" className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">About</Link>
+            <Link
+              to="/login"
+              className="rounded-lg bg-gradient-to-br from-brand to-lemon px-4 py-2 text-sm font-semibold text-white shadow-md shadow-lemon/30 transition hover:brightness-110"
+            >
+              Login
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -77,12 +80,12 @@ export default function Landing() {
             >
               Get Started → Login / 开始登录
             </Link>
-            <a
-              href="#services"
+            <Link
+              to="/about"
               className="rounded-xl border border-slate-300 bg-white px-7 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-50"
             >
-              Our Services / 服务
-            </a>
+              About / Details
+            </Link>
           </div>
         </div>
       </section>

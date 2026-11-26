@@ -7,6 +7,7 @@ import Inbox from './pages/Inbox.jsx';
 import MyChats from './pages/MyChats.jsx';
 import Agents from './pages/Agents.jsx';
 import Channels from './pages/Channels.jsx';
+import About from './pages/About.jsx';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/about" element={<About />} />
       <Route path="/login" element={<Login />} />
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/inbox" element={<Inbox />} />

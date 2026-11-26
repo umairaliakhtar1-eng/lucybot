@@ -154,6 +154,9 @@ export default function Layout() {
                     My Chats
                   </MenuLink>
                 )}
+                <MenuLink to="/about" onPick={() => setMenuOpen(false)}>
+                  About
+                </MenuLink>
               </div>
               <div className="mt-2 border-t border-slate-100 pt-2">
                 <button
