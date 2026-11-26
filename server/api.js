@@ -826,4 +826,20 @@ router.patch('/auth/agents/:id', requireAuth, requireAdmin, (req, res) => {
   res.json({ agent: db.findAgentById(id) });
 });
 
+router.post('/translate', requireAuth, async (req, res) => {
+  const text = String((req.body && req.body.text) || '').trim().slice(0, 4000);
+  if (!text) return res.status(400).json({ error: 'Text is required' });
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return res.status(502).json({ error: 'Translation failed' });
+    const data = await r.json();
+    const translated = Array.isArray(data?.[0]) ? data[0].map((p) => p?.[0] || '').join('') : '';
+    const detected = data?.[2] || 'auto';
+    res.json({ translated: translated || text, detected });
+  } catch (e) {
+    res.status(502).json({ error: e.message || 'Translation failed' });
+  }
+});
+
 module.exports = { router, requireAuth };

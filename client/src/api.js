@@ -102,4 +102,5 @@ export const api = {
   deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
   setStatus: (id, status) => request(`/conversations/${id}/status`, { method: 'POST', body: { status } }),
   markRead: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
+  translate: (text) => request('/translate', { method: 'POST', body: { text } }),
 };

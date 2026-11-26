@@ -263,6 +263,7 @@ export default function ChatWindow({
   const [lightbox, setLightbox] = useState(null);
   const [optimistic, setOptimistic] = useState([]);
   const [menu, setMenu] = useState(null);
+  const [translatePop, setTranslatePop] = useState(null);
   const fileRef = useRef(null);
   const textRef = useRef(null);
   const forwardFileRef = useRef(null);
@@ -295,6 +296,8 @@ export default function ChatWindow({
     window.addEventListener('scroll', close, true);
     return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
   }, [menu]);
+
+  useEffect(() => { setTranslatePop(null); }, [active?.id]);
 
   useEffect(() => () => {
     pendingRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
@@ -689,9 +692,21 @@ export default function ChatWindow({
         <div className="fixed z-[80] min-w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-xl" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           {!menu.message.deleted_at && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { setEditing(null); setReplyingTo(menu.message); setMenu(null); textRef.current?.focus(); }}>Reply</button>}
           {((menu.message.body || menu.message.media_url) || (menu.message.deleted_at && isOwner && (menu.message.deleted_body || menu.message.deleted_media_url))) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { copyMessage(menu.message); setMenu(null); }}>Copy</button>}
-          {!menu.message.deleted_at && menu.message.body && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { window.open(`https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(menu.message.body)}&op=translate`, '_blank', 'noopener,noreferrer'); setMenu(null); }}>Translate to English</button>}
+          {!menu.message.deleted_at && menu.message.body && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={async () => { const msg = menu.message; setMenu(null); const rect = { x: Math.min(menu.x, window.innerWidth - 340), y: Math.min(menu.y, window.innerHeight - 220) }; setTranslatePop({ x: rect.x, y: rect.y, text: msg.body, translated: '', loading: true, error: '' }); try { const res = await api.translate(msg.body); setTranslatePop((p) => p && p.text === msg.body ? { ...p, translated: res.translated, loading: false } : p); } catch (e) { setTranslatePop((p) => p && p.text === msg.body ? { ...p, loading: false, error: e.message || 'Translation failed' } : p); } }}>Translate to English</button>}
           {!menu.message.deleted_at && menu.message.direction === 'outbound' && !menu.message.media_url && (isOwner || menu.message.agent_id === myId) && <button className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-50" onClick={() => { startEdit(menu.message); setMenu(null); }}>Edit</button>}
           {!menu.message.deleted_at && canDeleteMessage(menu.message) && <button className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Delete this message?')) onDeleteMessage?.(menu.message.id); setMenu(null); }}>Delete</button>}
+        </div>
+      )}
+      {translatePop && (
+        <div className="fixed z-[80] w-[min(320px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: translatePop.x, top: translatePop.y }} onClick={(e) => e.stopPropagation()}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-slate-700">Translate to English</p>
+            <button onClick={() => setTranslatePop(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">✕</button>
+          </div>
+          <p className="mb-2 max-h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-slate-50 p-2 text-xs text-slate-500">{translatePop.text}</p>
+          <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-sky-50 p-2 text-sm text-slate-800">
+            {translatePop.loading ? 'Translating...' : translatePop.error ? <span className="text-red-500">{translatePop.error}</span> : translatePop.translated}
+          </div>
         </div>
       )}
       {lightbox && (
