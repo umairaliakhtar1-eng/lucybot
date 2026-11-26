@@ -5,54 +5,43 @@ import Avatar from './Avatar.jsx';
 
 function BrokenImage({ type = 'image' }) {
   return (
-    <div className="mb-1 flex items-center justify-center rounded-lg border border-brand/20 bg-brand-soft px-3 py-4 text-xs text-brand">
-      {type === 'image'
-        ? '🖼 Image load nahi hui'
-        : type === 'video'
-          ? '🎬 Video load nahi hua'
-          : '📄 File load nahi hui'}
+    <div className="flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+      {type === 'image' ? 'Image failed to load' : type === 'video' ? 'Video failed to load' : 'File failed to load'}
     </div>
   );
 }
 
-function MediaImage({ src, className }) {
+function MediaImage({ src, className, onOpen }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   if (failed) return <BrokenImage type="image" />;
   return (
-    <img
-      src={src}
-      alt="image"
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-      className={className}
-    />
+    <button type="button" onClick={() => onOpen?.(src)} className="relative block w-full overflow-hidden rounded-lg bg-slate-100 text-left">
+      {!loaded && <div className="absolute inset-0 animate-pulse bg-slate-200" />}
+      <img
+        src={src}
+        alt="attachment"
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className={`${className} ${loaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
+      />
+    </button>
   );
 }
 
 function MediaVideo({ src, className }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <BrokenImage type="video" />;
-  return (
-    <video src={src} controls preload="metadata" onError={() => setFailed(true)} className={className} />
-  );
+  return <video src={src} controls preload="metadata" onError={() => setFailed(true)} className={className} />;
 }
 
-// Meta kabhi emoji/sticker messages ke sath profile picture ka CDN URL bhej
-// deta hai - usay media ki tarah dikhana hi nahi chahiye.
 function isProfilePicUrl(url) {
   const value = String(url || '');
-  // `_nc_cat` asli images me bhi hota hai, is liye sirf profile-pic crop /
-  // lookaside host dekhte hain.
-  return (
-    /stp=cp0_dst-jpg/i.test(value) ||
-    /platform-lookaside\.fbsbx\.com/i.test(value) ||
-    /lookaside\.fbsbx\.com/i.test(value)
-  );
+  return /stp=cp0_dst-jpg/i.test(value) || /platform-lookaside\.fbsbx\.com/i.test(value) || /lookaside\.fbsbx\.com/i.test(value);
 }
 
-// URL se sirf saaf filename nikalo - query string (stp=..., _nc_...) kabhi
-// message me nahi dikhni chahiye.
 function fileNameOf(url) {
   try {
     const path = String(url || '').split('?')[0].split('#')[0];
@@ -62,23 +51,23 @@ function fileNameOf(url) {
   }
 }
 
-function Media({ m, className = '', mine = false }) {
+function Media({ m, className = '', mine = false, onOpenImage }) {
   if (!m.media_url || isProfilePicUrl(m.media_url)) return null;
   const kind = String(m.media_type || '').toLowerCase();
-  // Stickers bhi images hi hote hain.
   if (kind === 'image' || kind === 'sticker' || kind === 'photo') {
-    return <MediaImage src={m.media_url} className={className} />;
+    return <MediaImage src={m.media_url} className={className} onOpen={onOpenImage} />;
   }
   if (kind === 'video') return <MediaVideo src={m.media_url} className={className} />;
-  const name = fileNameOf(m.media_url);
+  const name = fileNameOf(m.media_url) || 'Attachment';
   return (
     <a
       href={m.media_url}
       target="_blank"
       rel="noreferrer"
-      className={`mb-1 flex items-center gap-1 text-xs underline ${mine ? 'text-white/85' : 'text-slate-500'}`}
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${mine ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
     >
-      📄 {name ? name.slice(0, 40) : 'Attachment'}
+      <span className="text-base">📄</span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
     </a>
   );
 }
@@ -101,25 +90,25 @@ function makePreview(file) {
   return { id: crypto.randomUUID(), file, kind: kindOf(file), preview: kindOf(file) === 'document' ? null : URL.createObjectURL(file) };
 }
 
-function Previews({ items, onRemove }) {
+function Previews({ items, onRemove, small = false }) {
   return (
     <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
       {items.map((p) => (
         <div key={p.id} className="relative shrink-0">
           {p.kind === 'video' ? (
-            <video src={p.preview} muted className={`${p.small ? 'h-12 w-12' : 'h-16 w-16'} rounded-lg border border-slate-200 bg-black object-cover`} />
+            <video src={p.preview} muted className={`${small ? 'h-12 w-12' : 'h-16 w-16'} rounded-lg border border-slate-200 bg-black object-cover`} />
           ) : p.kind === 'image' ? (
-            <img src={p.preview} alt="preview" className={`${p.small ? 'h-12 w-12' : 'h-16 w-16'} rounded-lg border border-slate-200 object-cover`} />
+            <img src={p.preview} alt="preview" className={`${small ? 'h-12 w-12' : 'h-16 w-16'} rounded-lg border border-slate-200 object-cover`} />
           ) : (
-            <div className={`${p.small ? 'h-12 max-w-24' : 'h-16 max-w-32'} flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2 text-xl`} title={p.file.name}>
-              📄
+            <div className={`${small ? 'h-12 max-w-28' : 'h-16 max-w-36'} flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs text-slate-600`} title={p.file.name}>
+              <span>📄</span><span className="truncate">{p.file.name}</span>
             </div>
           )}
           <button
             type="button"
             onClick={() => onRemove(p.id)}
-            title="Hatana"
-            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand text-xs font-bold text-white shadow hover:brightness-110"
+            title="Remove"
+            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white shadow hover:bg-brand"
           >
             ×
           </button>
@@ -131,81 +120,39 @@ function Previews({ items, onRemove }) {
 
 function QuoteBar({ quote, mine = false }) {
   if (!quote) return null;
-  const sender =
-    quote.sender === 'agent'
-      ? 'Agent'
-      : quote.sender === 'note'
-        ? 'Note'
-        : quote.sender === 'customer'
-          ? 'Customer'
-          : 'Myself';
-  const quoteKind =
-    quote.media_url && !isProfilePicUrl(quote.media_url)
-      ? String(quote.media_type || '').toLowerCase()
-      : '';
+  const sender = quote.sender === 'agent' ? 'Agent' : quote.sender === 'note' ? 'Note' : quote.sender === 'customer' ? 'Customer' : 'You';
+  const quoteKind = quote.media_url && !isProfilePicUrl(quote.media_url) ? String(quote.media_type || '').toLowerCase() : '';
   const quoteIsImage = quoteKind === 'image' || quoteKind === 'sticker' || quoteKind === 'photo';
-  const mediaText = quoteIsImage
-    ? '[image]'
-    : quoteKind === 'video'
-      ? '[video]'
-      : quoteKind
-        ? '[file]'
-        : '';
-  const label = (quote.body || mediaText || '');
+  const label = quote.body || (quoteIsImage ? 'Photo' : quoteKind === 'video' ? 'Video' : quoteKind ? 'File' : '');
   return (
-    <div
-      className={`mb-1 flex items-start gap-1.5 overflow-hidden rounded-lg border-l-2 px-2 py-1 text-xs ${
-        mine
-          ? 'border-white/60 bg-white/15 text-white/85'
-          : 'border-brand/30 bg-brand-soft text-slate-500'
-      }`}
-    >
-      <span className="shrink-0 font-semibold">↩ {sender}</span>
-      {quoteIsImage && (
-        <img
-          src={quote.media_url}
-          alt="quoted"
-          className="h-8 w-8 shrink-0 rounded object-cover"
-        />
-      )}
-      {quoteKind === 'video' && (
-        <span className="shrink-0">🎬</span>
-      )}
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{label}</span>
+    <div className={`mb-1.5 flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-[11px] ${mine ? 'border-white/60 bg-white/10 text-white/90' : 'border-brand bg-slate-100 text-slate-600'}`}>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{sender}</p>
+        <p className="truncate">{label}</p>
+      </div>
+      {quoteIsImage && <img src={quote.media_url} alt="quoted" className="h-8 w-8 shrink-0 rounded object-cover" />}
     </div>
   );
 }
 
-function ReplyButton({ onClick, after = false }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="Reply to this message (quote)"
-      className={`${after ? 'order-2' : 'order-1'} ml-1.5 mt-2 shrink-0 self-start rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-brand opacity-100 shadow-sm transition hover:bg-brand-soft group-hover/mbubble:opacity-100 md:opacity-0`}
-    >
-      ↩
-    </button>
-  );
+function StatusTicks({ m, mine }) {
+  if (!mine) return null;
+  if (m.localStatus === 'sending') return <span className="text-[10px] opacity-70">…</span>;
+  if (m.localStatus === 'failed') return <span className="text-[10px] text-red-200" title={m.localError || 'Failed'}>!</span>;
+  return <span className="text-[10px] opacity-80" title="Sent">✓</span>;
 }
 
-function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, showAgent }) {
+function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, showAgent, onRetry, onOpenImage }) {
   if (m.sender === 'note') {
     return (
-      <div className="flex justify-center">
-        <div className="max-w-[85%] rounded-xl border border-lemon/30 bg-lemon-soft px-4 py-2 text-sm text-slate-700 shadow-sm">
-          <p className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-lemon">
-            📝 Note — team only
-          </p>
-          <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" />
+      <div className="flex justify-center py-1">
+        <div className="max-w-[85%] rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-slate-700 shadow-sm">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Team note</p>
+          <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" onOpenImage={onOpenImage} />
           {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
-          <div className="mt-1 flex items-center justify-end gap-2">
-            {canDelete && (
-              <button onClick={onDelete} title="Delete note" className="text-slate-400 hover:text-brand">
-                🗑
-              </button>
-            )}
-            <p className="text-[10px] text-slate-400">{formatClock(m.created_at)}</p>
+          <div className="mt-1 flex items-center justify-end gap-2 text-[10px] text-slate-400">
+            {canDelete && <button onClick={onDelete} title="Delete note" className="hover:text-red-500">Delete</button>}
+            <span>{formatClock(m.created_at)}</span>
           </div>
         </div>
       </div>
@@ -214,47 +161,49 @@ function MessageBubble({ m, onReply, replying, onDelete, canDelete, onEdit, show
 
   const mine = m.direction === 'outbound';
   return (
-    <div className={`group/mbubble flex ${mine ? 'justify-end' : 'justify-start'}`}>
-      {mine ? (
-        <ReplyButton after onClick={onReply} />
-      ) : (
-        <ReplyButton onClick={onReply} />
-      )}
-      <div className={`flex max-w-[80%] flex-col ${mine ? 'items-end' : 'items-start'}`}>
-        <div
-          className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${
-            mine
-              ? 'bg-gradient-to-br from-brand to-lemon text-white shadow-lemon/30'
-              : 'bg-white text-slate-800'
-          } ${replying ? 'ring-2 ring-lemon' : ''}`}
-        >
-          <QuoteBar quote={m.reply_to} mine={mine} />
-          <Media m={m} className="mb-1 max-h-64 max-w-full rounded-lg" mine={mine} />
-          {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
-          <div className={`mt-1 flex items-center justify-end gap-2 text-[10px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
-            {m.edited_at ? <span className="italic">(edited)</span> : null}
-            {mine && m.body && !m.media_url ? (
-              <button
-                type="button"
-                onClick={onEdit}
-                title="Edit — corrected text will be sent as a new message"
-                className={mine ? 'text-white/70 transition hover:text-white' : 'text-slate-400 transition hover:text-brand'}
-              >
-                ✏️
-              </button>
-            ) : null}
-            <span>{formatClock(m.created_at)}</span>
+    <div className={`group flex ${mine ? 'justify-end' : 'justify-start'} px-1`}>
+      <div className={`flex max-w-[min(78%,42rem)] items-end gap-2 ${mine ? 'flex-row-reverse' : ''}`}>
+        {!mine ? <Avatar name={m.sender === 'customer' ? 'Customer' : 'Agent'} photo={null} className="h-7 w-7 text-[10px] self-end mb-1 hidden sm:flex" /> : null}
+        <div className="min-w-0">
+          <div
+            className={`relative rounded-2xl px-3 py-2 text-[14px] leading-relaxed shadow-sm ${
+              mine ? 'bg-[#2b5278] text-white rounded-br-md' : 'bg-white text-slate-800 rounded-bl-md border border-slate-100'
+            } ${replying ? 'ring-2 ring-sky-400' : ''}`}
+          >
+            <QuoteBar quote={m.reply_to} mine={mine} />
+            <Media m={m} className="mb-1 max-h-72 w-full max-w-sm rounded-lg object-cover" mine={mine} onOpenImage={onOpenImage} />
+            {m.body ? <p className="whitespace-pre-wrap break-words">{m.body}</p> : null}
+            <div className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
+              {m.edited_at ? <span className="italic">edited</span> : null}
+              {mine && m.body && !m.media_url && !m.localStatus ? (
+                <button type="button" onClick={onEdit} title="Edit" className="opacity-0 transition group-hover:opacity-100 hover:underline">Edit</button>
+              ) : null}
+              <span>{formatClock(m.created_at)}</span>
+              <StatusTicks m={m} mine={mine} />
+            </div>
+          </div>
+          <div className={`mt-0.5 flex items-center gap-2 px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
+            {m.localStatus === 'failed' && mine && (
+              <button type="button" onClick={onRetry} className="text-[11px] text-red-500 hover:underline">Retry</button>
+            )}
+            <button type="button" onClick={onReply} className="text-[11px] text-slate-400 opacity-0 transition hover:text-brand group-hover:opacity-100">Reply</button>
+            {showAgent && mine && m.agent_id ? <span className="text-[10px] text-slate-400">{m.agent_name || `Agent #${m.agent_id}`}</span> : null}
           </div>
         </div>
-        {showAgent && mine && m.agent_id ? (
-          <p className="mt-1 px-1 text-[10px] text-slate-400">
-            {`Agent #${m.agent_id}`}
-            {m.agent_name ? ` · ${m.agent_name}` : ''}
-          </p>
-        ) : null}
       </div>
     </div>
   );
+}
+
+function dayLabel(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return 'Today';
+  const y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
 }
 
 export default function ChatWindow({
@@ -293,6 +242,8 @@ export default function ChatWindow({
   const [showInfo, setShowInfo] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const [optimistic, setOptimistic] = useState([]);
   const fileRef = useRef(null);
   const textRef = useRef(null);
   const forwardFileRef = useRef(null);
@@ -304,44 +255,50 @@ export default function ChatWindow({
   forwardRef.current = forwardFiles;
 
   useEffect(() => {
-    setPending([]);
+    setPending((prev) => { prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview)); return []; });
     setText('');
-    setForwardFiles([]);
+    setForwardFiles((prev) => { prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview)); return []; });
     setForwardAgent('');
     setForwardNote('');
     setQuickNote('');
     setShowInfo(false);
     setReplyingTo(null);
     setEditing(null);
+    setLightbox(null);
+    setOptimistic([]);
   }, [active?.id]);
 
-  useEffect(() => {
-    return () => {
-      pendingRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-      forwardRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-    };
+  useEffect(() => () => {
+    pendingRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
+    forwardRef.current.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
   }, []);
 
-  // scroll to bottom on thread open
   useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      scrollRef.current?.scrollIntoView({ block: 'end' });
-    });
+    const raf = requestAnimationFrame(() => scrollRef.current?.scrollIntoView({ block: 'end' }));
     return () => cancelAnimationFrame(raf);
   }, [active?.id]);
 
-  // smart follow near bottom
+  const visibleMessages = messages.filter((m) => m.sender !== 'note');
+  const mergedMessages = [...visibleMessages, ...optimistic.filter((o) => !visibleMessages.some((m) => m.id === o.id))];
+
   useEffect(() => {
     const el = msgListRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
     if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [mergedMessages.length, active?.id]);
+
+  useEffect(() => {
+    const ta = textRef.current;
+    if (!ta) return;
+    ta.style.height = '0px';
+    ta.style.height = `${Math.min(160, Math.max(44, ta.scrollHeight))}px`;
+  }, [text]);
 
   if (!active) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-sky-50">
-        <p className="text-slate-400">Select a conversation</p>
+      <div className="flex flex-1 items-center justify-center bg-[#e7ebf0]">
+        <div className="rounded-full bg-white/80 px-4 py-2 text-sm text-slate-500 shadow-sm">Select a conversation</div>
       </div>
     );
   }
@@ -351,9 +308,8 @@ export default function ChatWindow({
 
   function addFiles(files) {
     if (editing) return;
-    setPending((prev) => [...prev, ...[...files].map(makePreview)]);
+    setPending((prev) => [...prev, ...[...files].map(makePreview)].slice(0, 10));
   }
-
   function removePending(id) {
     setPending((prev) => {
       const found = prev.find((p) => p.id === id);
@@ -361,11 +317,9 @@ export default function ChatWindow({
       return prev.filter((p) => p.id !== id);
     });
   }
-
   function addForwardFiles(files) {
-    setForwardFiles((prev) => [...prev, ...[...files].map((f) => ({ ...makePreview(f), small: true }))]);
+    setForwardFiles((prev) => [...prev, ...[...files].map(makePreview)].slice(0, 10));
   }
-
   function removeForwardFile(id) {
     setForwardFiles((prev) => {
       const found = prev.find((p) => p.id === id);
@@ -373,44 +327,22 @@ export default function ChatWindow({
       return prev.filter((p) => p.id !== id);
     });
   }
-
   function onPaste(e) {
-    const items = e.clipboardData?.items || [];
-    const files = [];
-    for (const it of items) {
-      const f = it.getAsFile();
-      if (f) files.push(f);
-    }
-    if (files.length) {
-      e.preventDefault();
-      addFiles(files);
-    }
+    const files = [...(e.clipboardData?.items || [])].map((it) => it.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); addFiles(files); }
   }
-
   function onDrop(e) {
-    e.preventDefault();
-    setDragging(false);
+    e.preventDefault(); setDragging(false);
     if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   }
-
   function onPasteForward(e) {
-    const items = e.clipboardData?.items || [];
-    const files = [];
-    for (const it of items) {
-      const f = it.getAsFile();
-      if (f) files.push(f);
-    }
-    if (files.length) {
-      e.preventDefault();
-      addForwardFiles(files);
-    }
+    const files = [...(e.clipboardData?.items || [])].map((it) => it.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); addForwardFiles(files); }
   }
-
   function onDropForward(e) {
     e.preventDefault();
     if (e.dataTransfer?.files?.length) addForwardFiles(e.dataTransfer.files);
   }
-
   async function uploadQueue(list) {
     const out = [];
     for (const p of list) {
@@ -420,58 +352,85 @@ export default function ChatWindow({
     }
     return out;
   }
-
   function startEdit(m) {
     setEditing(m);
     setReplyingTo(null);
-    setPending([]);
+    setPending((prev) => { prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview)); return []; });
     setText(m.body || '');
     requestAnimationFrame(() => textRef.current?.focus());
+  }
+
+  async function sendOptimistic(payload) {
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMsg = {
+      id: tempId,
+      conversation_id: active.id,
+      direction: 'outbound',
+      sender: 'agent',
+      body: payload.body || '',
+      media_type: payload.media_type || null,
+      media_url: payload.media_url || null,
+      reply_to_id: payload.reply_to_id || null,
+      reply_to: replyingTo ? { id: replyingTo.id, sender: replyingTo.sender, body: replyingTo.body || '', media_type: replyingTo.media_type, media_url: replyingTo.media_url } : null,
+      created_at: Math.floor(Date.now() / 1000),
+      localStatus: 'sending',
+      localPayload: payload,
+    };
+    setOptimistic((prev) => [...prev, optimisticMsg]);
+    try {
+      const sent = payload.media_url ? await onSendMedia(payload) : await onSend(payload.body, payload.reply_to_id);
+      setOptimistic((prev) => prev.filter((m) => m.id !== tempId));
+      return sent;
+    } catch (err) {
+      setOptimistic((prev) => prev.map((m) => m.id === tempId ? { ...m, localStatus: 'failed', localError: err.message } : m));
+      onError?.(err.message);
+      return null;
+    }
   }
 
   async function submit(e) {
     e.preventDefault();
     if (sending) return;
-
-    // Edit mode: corrected text naya message ban kar jayega.
     if (editing) {
       if (!text.trim()) return;
       setSending(true);
-      try {
-        await onEdit(editing.id, text.trim());
-        setText('');
-        setEditing(null);
-      } catch (err) {
-        onError(err.message);
-      } finally {
-        setSending(false);
-      }
+      try { await onEdit(editing.id, text.trim()); setText(''); setEditing(null); } catch (err) { onError(err.message); } finally { setSending(false); }
       return;
     }
-
     if (!pending.length && !text.trim()) return;
     setSending(true);
+    const replyToId = replyingTo?.id || null;
+    const caption = text.trim();
+    const toSend = pending;
+    setText('');
+    setPending([]);
+    setReplyingTo(null);
     try {
-      const replyToId = replyingTo?.id || null;
-      if (pending.length) {
-        const caption = text.trim();
-        const uploaded = await uploadQueue(pending);
-        let i = 0;
-        for (const item of uploaded) {
-          await onSendMedia({ body: i === 0 && caption ? caption : '', reply_to_id: replyToId, ...item });
-          i++;
+      if (toSend.length) {
+        const uploaded = await uploadQueue(toSend);
+        for (let i = 0; i < uploaded.length; i++) {
+          await sendOptimistic({ body: i === 0 && caption ? caption : '', reply_to_id: replyToId, ...uploaded[i] });
         }
-        setPending([]);
-        setText('');
       } else {
-        await onSend(text.trim(), replyToId);
-        setText('');
+        await sendOptimistic({ body: caption, reply_to_id: replyToId });
       }
-      setReplyingTo(null);
-    } catch (err) {
-      onError(err.message);
     } finally {
       setSending(false);
+      textRef.current?.focus();
+    }
+  }
+
+  async function retryMessage(m) {
+    if (!m.localPayload) return;
+    setOptimistic((prev) => prev.map((x) => x.id === m.id ? { ...x, localStatus: 'sending', localError: null } : x));
+    try {
+      const payload = m.localPayload;
+      if (payload.media_url) await onSendMedia(payload);
+      else await onSend(payload.body, payload.reply_to_id);
+      setOptimistic((prev) => prev.filter((x) => x.id !== m.id));
+    } catch (err) {
+      setOptimistic((prev) => prev.map((x) => x.id === m.id ? { ...x, localStatus: 'failed', localError: err.message } : x));
+      onError?.(err.message);
     }
   }
 
@@ -484,142 +443,81 @@ export default function ChatWindow({
       if (forwardFiles.length) {
         const uploaded = await uploadQueue(forwardFiles);
         media = uploaded[0];
+        setForwardFiles([]);
       }
       await onAssign(Number(forwardAgent), forwardNote, media);
-      setForwardAgent('');
-      setForwardNote('');
-      setForwardFiles([]);
-    } catch (err) {
-      onError(err.message);
-    } finally {
-      setForwardBusy(false);
-    }
+      setForwardAgent(''); setForwardNote('');
+    } catch (err) { onError(err.message); } finally { setForwardBusy(false); }
   }
-
   async function submitQuickNote(e) {
     e.preventDefault();
-    if (quickBusy) return;
-    if (!quickNote.trim()) return;
+    if (quickBusy || !quickNote.trim()) return;
     setQuickBusy(true);
-    try {
-      await onAddNote(quickNote.trim());
-      setQuickNote('');
-    } catch (err) {
-      onError(err.message);
-    } finally {
-      setQuickBusy(false);
-    }
+    try { await onAddNote(quickNote.trim()); setQuickNote(''); } catch (err) { onError(err.message); } finally { setQuickBusy(false); }
   }
-
   function handleStatusAction(e) {
-    const action = e.target.value;
-    e.target.value = '';
-    if (action === 'pending') onChangeStatus('pending');
-    else if (action === 'resolved') onChangeStatus('resolved');
-    else if (action === 'open') onChangeStatus('open');
+    const action = e.target.value; e.target.value = '';
+    if (['pending', 'resolved', 'open'].includes(action)) onChangeStatus(action);
   }
+  function canDeleteNote(note) { return isStaff || note.agent_id === myId; }
 
-  function canDeleteNote(note) {
-    return isStaff || note.agent_id === myId;
-  }
+  const statusBadge = active.status === 'resolved' ? 'bg-green-100 text-green-700' : active.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700';
 
   return (
-    <div className="flex flex-1">
-      {/* main column */}
-      <div className="flex flex-1 flex-col bg-sky-50">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-[#e7ebf0]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#efeae2]">
+        <div className="flex items-center gap-2 border-b border-slate-200 bg-[#f0f2f5] px-3 py-2 sm:px-4">
+          <button onClick={onOpenInbox} className="rounded-full p-2 text-slate-600 hover:bg-slate-200 md:hidden" title="Inbox" aria-label="Open inbox">☰</button>
+          <button onClick={() => setShowInfo(true)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
             <Avatar name={active.contact_name} photo={active.photo} className="h-10 w-10 shrink-0 text-base" />
             <div className="min-w-0">
-              <button
-                type="button"
-                onClick={() => setShowInfo(true)}
-                title="Customer details dekho"
-                className="block max-w-full truncate text-left font-semibold text-slate-800 transition hover:text-brand hover:underline"
-              >
-                {active.contact_name}
-              </button>
+              <p className="truncate text-[15px] font-semibold text-slate-800">{active.contact_name}</p>
               <p className="truncate text-xs text-slate-500">
                 <span style={{ color: channel.color }}>{channel.label}</span>
-                {active.assigned_agent_name ? ` · Agent: ${active.assigned_agent_name}` : ''}
+                {active.assigned_agent_name ? ` · ${active.assigned_agent_name}` : ''}
               </p>
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <span className={`hidden rounded px-2 py-0.5 text-[10px] font-semibold capitalize sm:inline-block ${
-              active.status === 'resolved'
-                ? 'bg-green-100 text-green-700'
-                : active.status === 'pending'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-sky-100 text-sky-600'
-            }`}>
-              {active.status}
-            </span>
-            <button
-              onClick={() => setShowInfo(true)}
-              title="Customer details"
-              className="hidden rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 sm:block"
-            >
-              ℹ️
-            </button>
-            {/* Mobile popup icons: Inbox list aur Agent Notes/Forward panel */}
-            <button
-              onClick={onOpenInbox}
-              title="Open inbox list"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 md:hidden"
-            >
-              ☰
-            </button>
-            <button
-              onClick={onToggleNotes}
-              title="Open Agent Notes / Forward panel"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 md:hidden"
-            >
-              📝
-            </button>
-            {isStaff ? (
-              <select
-                onChange={handleStatusAction}
-                defaultValue=""
-                title="Status badlo"
-                className="rounded-lg border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100 focus:outline-none hidden sm:block"
-              >
-                <option value="" disabled>⋯</option>
-                <option value="open">Mark Open</option>
-                <option value="pending">Mark Pending</option>
-                <option value="resolved">Resolve Chat</option>
+          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-medium capitalize sm:inline-flex ${statusBadge}`}>{active.status}</span>
+            {isStaff && (
+              <select onChange={handleStatusAction} defaultValue="" className="hidden rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 lg:block">
+                <option value="" disabled>Status</option>
+                <option value="open">Open</option>
+                <option value="pending">Pending</option>
+                <option value="resolved">Resolved</option>
               </select>
-            ) : (
-              <button
-                onClick={onDismiss}
-                title="Close chat panel (conversation will remain open)"
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                ✕
-              </button>
             )}
+            <button onClick={onToggleNotes} className="rounded-full p-2 text-slate-600 hover:bg-slate-200 md:hidden" title="Notes">📝</button>
+            {!isStaff && <button onClick={onDismiss} className="rounded-full p-2 text-slate-600 hover:bg-slate-200" title="Close">✕</button>}
           </div>
         </div>
 
-        <div ref={msgListRef} className="flex-1 space-y-3 overflow-y-auto p-4">
-          {messages
-            .filter((m) => m.sender !== 'note')
-            .map((m) => (
-              <MessageBubble
-                key={m.id}
-                m={m}
-                showAgent={showAgent}
-                onReply={() => { setEditing(null); setReplyingTo(m); }}
-                onEdit={() => startEdit(m)}
-                replying={replyingTo?.id === m.id}
-              />
-            ))}
-          {messages.filter((m) => m.sender !== 'note').length === 0 && (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-slate-400">No messages in this conversation. Send the first reply.</p>
-            </div>
-          )}
-          <div ref={scrollRef} />
+        <div ref={msgListRef} className="flex-1 overflow-y-auto px-2 py-3 sm:px-4" style={{ backgroundColor: '#efeae2', backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.03) 1px, transparent 0)', backgroundSize: '24px 24px' }}>
+          <div className="mx-auto flex max-w-5xl flex-col gap-1">
+            {mergedMessages.length === 0 && (
+              <div className="flex py-16 items-center justify-center"><p className="rounded-lg bg-white/90 px-4 py-2 text-sm text-slate-500 shadow-sm">No messages yet. Send the first reply.</p></div>
+            )}
+            {mergedMessages.map((m, i) => {
+              const prev = mergedMessages[i - 1];
+              const showDay = !prev || dayLabel(prev.created_at) !== dayLabel(m.created_at);
+              return (
+                <div key={m.id}>
+                  {showDay && <div className="my-2 flex justify-center"><span className="rounded-full bg-slate-700/10 px-3 py-1 text-[11px] font-medium text-slate-600">{dayLabel(m.created_at)}</span></div>}
+                  <MessageBubble
+                    m={m}
+                    showAgent={showAgent}
+                    onReply={() => { setEditing(null); setReplyingTo(m); textRef.current?.focus(); }}
+                    onEdit={() => startEdit(m)}
+                    replying={replyingTo?.id === m.id}
+                    onRetry={() => retryMessage(m)}
+                    onOpenImage={setLightbox}
+                  />
+                </div>
+              );
+            })}
+            <div ref={scrollRef} />
+          </div>
         </div>
 
         <form
@@ -628,296 +526,102 @@ export default function ChatWindow({
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }}
           onDrop={onDrop}
-          className="relative border-t border-slate-200 bg-white p-3"
+          className="relative border-t border-slate-200 bg-[#f0f2f5] px-2 py-2 sm:px-3"
         >
-          {dragging && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-lemon bg-lemon-soft/90">
-              <p className="text-sm font-semibold text-brand">📷 Drop images/videos/files here</p>
-            </div>
-          )}
-
-          {pending.length > 0 && <Previews items={pending} onRemove={removePending} />}
-
-          {editing && (
-            <div className="mb-2 flex items-start gap-2 rounded-lg border border-lemon/40 bg-lemon-soft px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-lemon">
-                  ✏️ Editing message
-                </p>
-                <p className="truncate text-xs text-slate-600">
-                  Send karne par corrected text naya message ban kar jayega; purana "(edited)" mark ho jayega.
-                </p>
+          {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-sky-50/95 text-sm font-medium text-brand">Drop files to attach</div>}
+          <div className="mx-auto max-w-5xl">
+            {pending.length > 0 && <Previews items={pending} onRemove={removePending} />}
+            {editing && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <span><strong>Editing message</strong> — sending creates a new corrected message.</span>
+                <button type="button" onClick={() => { setEditing(null); setText(''); }} className="ml-2 text-slate-500 hover:text-slate-800">Cancel</button>
               </div>
-              <button
-                type="button"
-                onClick={() => { setEditing(null); setText(''); }}
-                className="rounded p-0.5 text-slate-400 hover:text-brand"
-                title="Cancel edit"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {replyingTo && (
-            <div className="mb-2 flex items-start gap-2 rounded-lg border border-lemon/30 bg-lemon-soft px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-lemon">
-                  ↩ Reply to{' '}
-                  {replyingTo.direction === 'outbound'
-                    ? 'myself'
-                    : replyingTo.sender === 'agent'
-                      ? 'agent'
-                      : 'customer'}
-                </p>
-                <p className="whitespace-pre-wrap break-words text-xs text-slate-600">
-                  {replyingTo.media_url && !isProfilePicUrl(replyingTo.media_url)
-                    ? (() => {
-                        const k = String(replyingTo.media_type || '').toLowerCase();
-                        if (k === 'image' || k === 'sticker' || k === 'photo') return '[image]';
-                        return k === 'video' ? '[video]' : '[file]';
-                      })()
-                    : replyingTo.body || ''}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReplyingTo(null)}
-                className="rounded p-0.5 text-slate-400 hover:text-brand"
-                title="Cancel reply"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,video/*,.pdf,.txt"
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles(e.target.files || []);
-                if (fileRef.current) fileRef.current.value = '';
-              }}
-            />
-            {!editing && (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                title="Attach file (drag-drop or Ctrl+V paste)"
-                className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                🖼
-              </button>
             )}
-            <textarea
-              ref={textRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  e.currentTarget.form?.requestSubmit();
-                }
-              }}
-              rows={1}
-              placeholder={
-                editing
-                  ? 'Corrected text likhein...'
-                  : pending.length
-                    ? 'Media ke liye caption likho (optional)...'
-                    : replyingTo
-                      ? 'Is message par reply likhein...'
-                      : `${channel.label} par reply likhein...`
-              }
-              className="max-h-48 min-h-[42px] flex-1 resize-y rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-lemon"
-            />
-            <button
-              type="submit"
-              disabled={sending || (!text.trim() && !pending.length)}
-              className="rounded-lg bg-gradient-to-br from-brand to-lemon px-5 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
-            >
-              {sending ? 'Sending...' : editing ? 'Update' : pending.length ? `Send ${pending.length}` : 'Send'}
-            </button>
+            {replyingTo && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
+                <div className="min-w-0"><p className="font-semibold text-brand">Replying</p><p className="truncate">{replyingTo.body || (replyingTo.media_type ? `[${replyingTo.media_type}]` : '')}</p></div>
+                <button type="button" onClick={() => setReplyingTo(null)} className="ml-2 text-slate-400 hover:text-slate-700">✕</button>
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip" multiple hidden onChange={(e) => { addFiles(e.target.files || []); if (fileRef.current) fileRef.current.value = ''; }} />
+              {!editing && <button type="button" onClick={() => fileRef.current?.click()} className="mb-0.5 rounded-full p-2.5 text-slate-500 hover:bg-slate-100" title="Attach">📎</button>}
+              <textarea
+                ref={textRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+                rows={1}
+                placeholder={editing ? 'Edit message...' : 'Message'}
+                className="max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl border-0 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none ring-1 ring-slate-200 focus:ring-sky-300"
+              />
+              <button type="submit" disabled={sending || (!text.trim() && !pending.length)} className="mb-0.5 rounded-full bg-[#3390ec] p-2.5 text-white hover:bg-[#2b7ed0] disabled:opacity-40" aria-label="Send" title="Send">
+                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            </div>
           </div>
         </form>
       </div>
 
-      {/* notes resize handle */}
       <div
         onMouseDown={(e) => {
           e.preventDefault();
-          const startX = e.clientX;
-          const startW = notesWidth;
-          const onMove = (ev) => {
-            setNotesWidth(Math.min(640, Math.max(200, startW - (ev.clientX - startX))));
-          };
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-          };
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
+          const startX = e.clientX; const startW = notesWidth;
+          const onMove = (ev) => setNotesWidth(Math.min(560, Math.max(260, startW - (ev.clientX - startX))));
+          const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+          window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
         }}
-        title="Drag to resize"
-        className="hidden w-1.5 shrink-0 cursor-col-resize bg-slate-200 transition hover:bg-brand/50 active:bg-brand md:block"
+        className="hidden w-1 shrink-0 cursor-col-resize bg-slate-200 hover:bg-sky-300 md:block"
       />
-
-      {mobileNotes && (
-        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={onToggleNotes} />
-      )}
-
-      {/* notes panel: mobile par right side popup drawer, desktop par side bar */}
-      <aside
-        className={`flex-col border-l border-slate-200 bg-white ${
-          mobileNotes
-            ? 'fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-sm shadow-xl'
-            : 'hidden'
-        } md:static md:z-auto md:flex md:shadow-none`}
-        style={{ width: mobileNotes ? undefined : notesWidth }}
-      >
-        <div className="border-b border-slate-200 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">📝 Notes / Forward</h3>
-            <button
-              onClick={onToggleNotes}
-              title="Close panel"
-              className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 md:hidden"
-            >
-              ✕
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-400">Notes are visible to the team only (not to the customer)</p>
+      {mobileNotes && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={onToggleNotes} />}
+      <aside className={`flex-col border-l border-slate-200 bg-white ${mobileNotes ? 'fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-sm shadow-xl' : 'hidden'} md:static md:z-auto md:flex`} style={{ width: mobileNotes ? undefined : notesWidth }}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div><h3 className="text-sm font-semibold text-slate-800">Notes / Forward</h3><p className="text-[11px] text-slate-400">Team only</p></div>
+          <button onClick={onToggleNotes} className="rounded-md border border-slate-200 px-2 py-1 text-sm md:hidden">✕</button>
         </div>
-
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {notes.map((m) => (
-            <div key={m.id} className="rounded-lg border border-lemon/30 bg-lemon-soft p-3">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-lemon">{m.agent_name || 'Agent'}</span>
-                {canDeleteNote(m) && (
-                  <button
-                    onClick={() => onDeleteNote(m.id)}
-                    title="Delete note"
-                    className="text-slate-400 hover:text-brand"
-                  >
-                    🗑
-                  </button>
-                )}
+            <div key={m.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-amber-700">
+                <span>{m.agent_name || 'Agent'}</span>
+                {canDeleteNote(m) && <button onClick={() => onDeleteNote(m.id)} className="text-slate-400 hover:text-red-500">Delete</button>}
               </div>
-              <Media m={m} className="mb-2 max-h-52 w-full rounded-lg object-cover" />
+              <Media m={m} className="mb-2 max-h-52 w-full rounded-lg object-cover" onOpenImage={setLightbox} />
               {m.body ? <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{m.body}</p> : null}
               <p className="mt-1 text-right text-[10px] text-slate-400">{formatClock(m.created_at)}</p>
             </div>
           ))}
           {!notes.length && <p className="p-2 text-xs text-slate-400">No notes yet.</p>}
         </div>
-
         {canAssign && (
-          <form
-            onSubmit={submitForward}
-            onPaste={onPasteForward}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={onDropForward}
-            className="border-t border-slate-200 p-3"
-          >
-            <p className="mb-2 text-xs font-semibold text-slate-500">⇢ Forward + Note</p>
-            <select
-              value={forwardAgent}
-              onChange={(e) => setForwardAgent(e.target.value)}
-              className="mb-2 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-lemon"
-            >
-              <option value="">Assign an agent...</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
+          <form onSubmit={submitForward} onPaste={onPasteForward} onDragOver={(e) => e.preventDefault()} onDrop={onDropForward} className="border-t border-slate-200 p-3">
+            <p className="mb-2 text-xs font-semibold text-slate-500">Forward / Assign</p>
+            <select value={forwardAgent} onChange={(e) => setForwardAgent(e.target.value)} className="mb-2 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">Assign agent...</option>
+              {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
-            {forwardFiles.length > 0 && <Previews items={forwardFiles} onRemove={removeForwardFile} />}
-            <textarea
-              value={forwardNote}
-              onChange={(e) => setForwardNote(e.target.value)}
-              rows={2}
-              placeholder="Note (optional)..."
-              className="mb-2 w-full resize-none rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-lemon"
-            />
-            <div className="flex items-center gap-2">
-              <input
-                ref={forwardFileRef}
-                type="file"
-                accept="image/*,video/*,.pdf,.txt"
-                multiple
-                hidden
-                onChange={(e) => {
-                  addForwardFiles(e.target.files || []);
-                  if (forwardFileRef.current) forwardFileRef.current.value = '';
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => forwardFileRef.current?.click()}
-                title="Attach media to note (drag-drop or Ctrl+V paste)"
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                🖼
-              </button>
-              <button
-                type="submit"
-                disabled={!forwardAgent || forwardBusy}
-                className="flex-1 rounded-lg bg-gradient-to-br from-brand to-lemon px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40"
-              >
-                {forwardBusy ? 'Forwarding...' : `Forward${forwardFiles.length ? ` (${forwardFiles.length})` : ''}`}
-              </button>
+            {forwardFiles.length > 0 && <Previews items={forwardFiles} onRemove={removeForwardFile} small />}
+            <textarea value={forwardNote} onChange={(e) => setForwardNote(e.target.value)} rows={2} placeholder="Note (optional)..." className="mb-2 w-full resize-none rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <div className="flex gap-2">
+              <input ref={forwardFileRef} type="file" accept="image/*,video/*,.pdf,.txt" multiple hidden onChange={(e) => { addForwardFiles(e.target.files || []); if (forwardFileRef.current) forwardFileRef.current.value = ''; }} />
+              <button type="button" onClick={() => forwardFileRef.current?.click()} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">Attach</button>
+              <button type="submit" disabled={!forwardAgent || forwardBusy} className="flex-1 rounded-lg bg-[#3390ec] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">{forwardBusy ? 'Sending...' : 'Forward'}</button>
             </div>
           </form>
         )}
-
         {canNote && !canAssign && (
           <form onSubmit={submitQuickNote} className="border-t border-slate-200 p-3">
-            <p className="mb-2 text-xs font-semibold text-slate-500">📝 Quick note</p>
-            <textarea
-              value={quickNote}
-              onChange={(e) => setQuickNote(e.target.value)}
-              rows={2}
-              placeholder="Internal note..."
-              className="mb-2 w-full resize-none rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-lemon"
-            />
-            <button
-              type="submit"
-              disabled={quickBusy || !quickNote.trim()}
-              className="w-full rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-40"
-            >
-              {quickBusy ? 'Adding...' : 'Add Note'}
-            </button>
+            <textarea value={quickNote} onChange={(e) => setQuickNote(e.target.value)} rows={2} placeholder="Internal note..." className="mb-2 w-full resize-none rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <button type="submit" disabled={quickBusy || !quickNote.trim()} className="w-full rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40">{quickBusy ? 'Adding...' : 'Add Note'}</button>
           </form>
         )}
       </aside>
 
-      {/* info modal */}
       {showInfo && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowInfo(false)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <h3 className="text-sm font-bold text-slate-800">📋 Customer Details</h3>
-              <button
-                onClick={() => setShowInfo(false)}
-                title="Close"
-                className="rounded-lg border border-slate-200 px-2 py-0.5 text-sm text-slate-500 hover:bg-slate-100"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="mt-4 flex items-center gap-3">
-              <Avatar name={active.contact_name} photo={active.photo} className="h-16 w-16 text-xl" />
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-800">{active.contact_name}</p>
-                <p className="text-sm text-slate-500">{active.external_id}</p>
-              </div>
-            </div>
-
+            <div className="flex items-start justify-between"><h3 className="text-sm font-bold text-slate-800">Customer Details</h3><button onClick={() => setShowInfo(false)} className="rounded-md border border-slate-200 px-2 py-0.5 text-sm">✕</button></div>
+            <div className="mt-4 flex items-center gap-3"><Avatar name={active.contact_name} photo={active.photo} className="h-14 w-14 text-lg" /><div className="min-w-0"><p className="truncate font-semibold text-slate-800">{active.contact_name}</p><p className="truncate text-sm text-slate-500">{active.external_id}</p></div></div>
             <dl className="mt-4 space-y-2 text-sm">
               <DetailRow label="Channel" value={channel.label} />
               <DetailRow label="Status" value={active.status} />
@@ -927,6 +631,12 @@ export default function ChatWindow({
               <DetailRow label="Created" value={formatFull(active.created_at)} />
             </dl>
           </div>
+        </div>
+      )}
+      {lightbox && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4" onClick={() => setLightbox(null)}>
+          <button className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1.5 text-white hover:bg-white/20" onClick={() => setLightbox(null)}>Close</button>
+          <img src={lightbox} alt="preview" className="max-h-full max-w-full rounded object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </div>

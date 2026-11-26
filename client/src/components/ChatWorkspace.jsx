@@ -260,7 +260,7 @@ export default function ChatWorkspace({ agentView = false }) {
           setMessages([]);
         }
       } catch (e) {
-        if (!cancelled) setError('Conversations load nahi ho saki.');
+        if (!cancelled) setError('Failed to load conversations.');
         console.error(e);
       } finally {
         if (!cancelled) setLoading(false);
@@ -283,19 +283,15 @@ export default function ChatWorkspace({ agentView = false }) {
   // SSE realtime
   useEffect(() => {
     const source = new EventSource('/api/stream');
-    source.onopen = () => {};
-    source.onerror = () => {};
 
     const handleMessage = (payload) => {
       const { conversation, message } = payload;
       if (!conversation) return;
       setConversations((prev) => upsert(prev, conversation));
       if (activeIdRef.current === conversation.id) {
-        setMessages((prev) => mergeMessages(prev, [message]));
-        if (message && message.direction === 'inbound') {
-          api.markRead(conversation.id).catch(() => {});
-        }
-        setActive((t) => (t && t.id === conversation.id ? conversation : t));
+        if (message) setMessages((prev) => mergeMessages(prev, [message]));
+        if (message?.direction === 'inbound') api.markRead(conversation.id).catch(() => {});
+        setActive((t) => (t && t.id === conversation.id ? { ...t, ...conversation } : t));
       }
     };
 
@@ -351,8 +347,10 @@ export default function ChatWorkspace({ agentView = false }) {
           last_message_at: message.created_at,
         })
       );
+      return message;
     } catch (e) {
       setError(e.message);
+      throw e;
     }
   }
 
@@ -368,8 +366,10 @@ export default function ChatWorkspace({ agentView = false }) {
           last_message_at: message.created_at,
         })
       );
+      return message;
     } catch (e) {
       setError(e.message);
+      throw e;
     }
   }
 
@@ -480,56 +480,30 @@ export default function ChatWorkspace({ agentView = false }) {
       )}
       {/* conversation list */}
       <div
-        className={`${listMobileClasses} flex-col border-r border-slate-200 bg-white md:static md:z-auto md:flex md:max-w-none md:shadow-none`}
+        className={`${listMobileClasses} min-h-0 flex-col border-r border-slate-200 bg-white md:static md:z-auto md:flex md:max-w-none md:shadow-none`}
         style={{ width: isMobile ? undefined : listWidth }}
       >
-        <div className="flex items-center justify-between gap-2 bg-gradient-to-br from-brand to-lemon px-4 py-3">
-          <div>
-            <h2 className="text-lg font-semibold text-white">{agentView ? 'My Chats' : 'Inbox'}</h2>
-            <p className="text-xs text-white/85">
-              {sorted.length} active {sorted.length === 1 ? 'conversation' : 'conversations'}
-            </p>
+        <div className="flex items-center justify-between gap-2 bg-[#f0f2f5] px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-slate-800">{agentView ? 'My Chats' : 'Inbox'}</h2>
+            <p className="text-xs text-slate-500">{sorted.length} chats</p>
           </div>
-          <button
-            onClick={() => refresh()}
-            disabled={refreshing}
-            title="Refresh conversation list"
-            className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/30 disabled:opacity-60"
-          >
-            {refreshing ? '🔄...' : '↻ Refresh'}
-          </button>
-          {activeId && (
-            <button
-              onClick={() => setMobileInbox(false)}
-              title="Close inbox"
-              className="rounded-lg bg-white/20 px-2.5 py-1.5 text-sm font-semibold text-white transition hover:bg-white/30 md:hidden"
-            >
-              ✕
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            <button onClick={() => refresh()} disabled={refreshing} title="Refresh" className="rounded-full p-2 text-slate-500 hover:bg-slate-200 disabled:opacity-50">{refreshing ? '…' : '↻'}</button>
+            {activeId && <button onClick={() => setMobileInbox(false)} title="Close inbox" className="rounded-full p-2 text-slate-500 hover:bg-slate-200 md:hidden">✕</button>}
+          </div>
         </div>
         {error && <p className="bg-brand-soft p-2 text-xs text-brand">{error}</p>}
-        <div className="border-b border-slate-200 p-2">
+        <div className="border-b border-slate-200 px-3 py-2">
           <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-              🔍
-            </span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">⌕</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by customer name..."
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-8 text-sm text-slate-800 outline-none focus:border-lemon"
+              placeholder="Search"
+              className="w-full rounded-xl bg-slate-100 py-2 pl-9 pr-8 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:bg-white focus:ring-sky-300"
             />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                title="Clear search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-brand"
-              >
-                ✕
-              </button>
-            )}
+            {search && <button type="button" onClick={() => setSearch('')} title="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700">✕</button>}
           </div>
         </div>
         <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-2 py-1.5">
@@ -558,7 +532,7 @@ export default function ChatWorkspace({ agentView = false }) {
               <button
                 type="button"
                 onClick={() => setAgentFilter(agentFilter === 'none' ? 'all' : 'none')}
-                title="Kisi agent ko assign nahi hui chats"
+                title="Chats not assigned to any agent"
                 className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition ${
                   agentFilter === 'none'
                     ? 'bg-brand text-white shadow-sm'
@@ -572,7 +546,7 @@ export default function ChatWorkspace({ agentView = false }) {
                   key={a.id}
                   type="button"
                   onClick={() => setAgentFilter(agentFilter === String(a.id) ? 'all' : String(a.id))}
-                  title={`${a.name} ki assigned chats (${a.count}) — click par sirf yahi agent ki chats`}
+                  title={`${a.name}'s assigned chats (${a.count})`}
                   className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold transition ${
                     agentFilter === String(a.id)
                       ? 'bg-brand text-white shadow-sm'
@@ -593,87 +567,32 @@ export default function ChatWorkspace({ agentView = false }) {
               <button
                 key={c.id}
                 onClick={() => select(c.id)}
-                className={`block w-full border-b px-4 py-3 text-left transition ${
-                  activeId === c.id
-                    ? 'bg-brand-soft'
-                    : agentView && c.assign_pending
-                      ? 'border-red-100 bg-red-50 hover:bg-red-100'
-                      : 'border-slate-100 bg-white hover:bg-slate-50'
+                className={`block w-full px-3 py-2.5 text-left transition ${
+                  activeId === c.id ? 'bg-[#3390ec]/10' : agentView && c.assign_pending ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'
                 }`}
               >
-                <div className="flex items-start gap-3">
-                  <Avatar name={c.contact_name} photo={c.photo} className="h-10 w-10 text-base" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="truncate text-sm font-semibold text-slate-800">
-                        {c.contact_name}
-                      </span>
-                      <div className="ml-2 flex items-center gap-1.5">
-                        {agentView && c.assign_pending > 0 && (
-                          <span
-                            className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
-                            title="Nayi assigned chat — abhi open nahi ki"
-                          >
-                            new
-                          </span>
-                        )}
-                        {(c.unread || 0) > 0 && (
-                          <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
-                            {c.unread > 99 ? '99+' : c.unread}
-                          </span>
-                        )}
-                        <span className="whitespace-nowrap text-[10px] text-slate-400">
-                          {formatTime(c.last_message_at)}
-                        </span>
+                <div className="flex items-center gap-3">
+                  <Avatar name={c.contact_name} photo={c.photo} className="h-12 w-12 text-base" />
+                  <div className="min-w-0 flex-1 border-b border-slate-100 py-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[15px] font-medium text-slate-800">{c.contact_name}</span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {agentView && c.assign_pending > 0 && <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">new</span>}
+                        <span className="text-[11px] text-slate-400">{formatTime(c.last_message_at)}</span>
                       </div>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className="truncate text-xs text-slate-500">
-                        {c.last_message || (c.status === 'resolved' ? '(resolved)' : 'No messages yet')}
-                      </span>
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                          c.status === 'resolved'
-                            ? 'bg-green-100 text-green-700'
-                            : c.status === 'pending'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-sky-100 text-sky-600'
-                        }`}
-                      >
-                        {c.status === 'resolved'
-                          ? 'resolved'
-                          : c.status === 'pending'
-                            ? 'pending'
-                            : 'open'}
-                      </span>
+                      <span className="truncate text-sm text-slate-500">{c.last_message || (c.status === 'resolved' ? 'Resolved' : 'No messages yet')}</span>
+                      {(c.unread || 0) > 0 ? (
+                        <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#3390ec] px-1.5 text-[10px] font-bold text-white">{c.unread > 99 ? '99+' : c.unread}</span>
+                      ) : (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] capitalize ${c.status === 'resolved' ? 'bg-green-100 text-green-700' : c.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{c.status}</span>
+                      )}
                     </div>
                     {!agentView && (
-                      <div className="mt-0.5 flex items-center gap-1">
-                        <span
-                          className="inline-block h-2 w-2 shrink-0 rounded-full"
-                          style={{ background: ch.color }}
-                          title={ch.label}
-                        />
-                        <span className="shrink-0 text-[10px] text-slate-400">{ch.label}</span>
-                      </div>
-                    )}
-                    {!agentView && isStaff && (
-                      <div className="mt-1">
-                        {c.assigned_agent_name ? (
-                          <span
-                            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand"
-                            title={`Assigned to: ${c.assigned_agent_name}`}
-                          >
-                            👤 <span className="truncate">{c.assigned_agent_name}</span>
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600"
-                            title="Unassigned — open the chat to assign an agent"
-                          >
-                            unassigned
-                          </span>
-                        )}
+                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400">
+                        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: ch.color }} />{ch.short || ch.label}</span>
+                        {isStaff && <span className="truncate">{c.assigned_agent_name || 'Unassigned'}</span>}
                       </div>
                     )}
                   </div>
@@ -693,7 +612,7 @@ export default function ChatWorkspace({ agentView = false }) {
       <div
         onMouseDown={startListResize}
         title="Drag to resize"
-        className="hidden w-1.5 shrink-0 cursor-col-resize bg-slate-200 transition hover:bg-brand/50 active:bg-brand md:block"
+        className="hidden w-1 shrink-0 cursor-col-resize bg-slate-200 hover:bg-sky-300 md:block"
       />
 
       {/* chat column */}
